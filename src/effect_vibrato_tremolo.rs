@@ -4,6 +4,7 @@ use xmrs::period_helper::{FrequencyType, PeriodHelper};
 #[allow(unused_imports)]
 use micromath::F32Ext;
 #[cfg(feature = "libm")]
+#[allow(unused_imports)]
 use num_traits::float::Float;
 
 use crate::effect::*;
