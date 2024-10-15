@@ -56,10 +56,6 @@ impl<'a> StateSample<'a> {
         self.position = -1.0;
     }
 
-    pub fn bits(&self) -> u8 {
-        self.sample.bits()
-    }
-
     pub fn get_panning(&self) -> f32 {
         self.sample.panning
     }
@@ -71,11 +67,6 @@ impl<'a> StateSample<'a> {
     /// use sample finetune or force if finetune arg!=0
     pub fn get_finetuned_note(&self) -> f32 {
         self.sample.relative_note as f32 + self.finetune
-    }
-
-    /// get finetune only
-    pub fn get_finetune(&self) -> f32 {
-        self.finetune
     }
 
     pub fn set_finetune(&mut self, finetune: f32) {

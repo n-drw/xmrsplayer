@@ -1,4 +1,5 @@
 #[cfg(feature = "micromath")]
+#[allow(unused_imports)]
 use micromath::F32Ext;
 #[cfg(feature = "libm")]
 use num_traits::float::Float;
@@ -737,7 +738,6 @@ impl<'a> Channel<'a> {
     }
 
     fn tick0_load_note(&mut self, new_instr: bool) {
-
         // Note is note valid? Return early.
         if !self.current.note.is_valid() {
             if self.current.note.is_keyoff() {
@@ -749,7 +749,7 @@ impl<'a> Channel<'a> {
             }
             return;
         }
-    
+
         // Instr?
         if let Some(instr) = &mut self.instr {
             // Portamento?
@@ -763,13 +763,13 @@ impl<'a> Channel<'a> {
                 self.cut_note();
                 return;
             }
-    
+
             // SetNote
             if instr.set_note(self.current.note) {
                 if let Some(s) = &instr.state_sample {
                     self.note = self.current.note.value() as f32 - 1.0 + s.get_finetuned_note();
                 }
-    
+
                 let trigger_flag = if self.current.instrument > 0 {
                     TRIGGER_KEEP_NONE
                 } else {

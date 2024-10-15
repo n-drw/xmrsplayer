@@ -4,6 +4,7 @@ use crate::historical_helper::HistoricalHelper;
 use core::default::Default;
 
 #[cfg(feature = "micromath")]
+#[allow(unused_imports)]
 use micromath::F32Ext;
 #[cfg(feature = "libm")]
 use num_traits::float::Float;

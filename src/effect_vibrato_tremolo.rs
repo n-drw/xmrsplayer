@@ -1,6 +1,7 @@
 use xmrs::period_helper::{FrequencyType, PeriodHelper};
 
 #[cfg(feature = "micromath")]
+#[allow(unused_imports)]
 use micromath::F32Ext;
 #[cfg(feature = "libm")]
 use num_traits::float::Float;
@@ -15,14 +16,6 @@ pub struct VibratoTremolo {
 }
 
 impl VibratoTremolo {
-    pub fn new(waveform: u8, speed: f32, depth: f32) -> Self {
-        Self {
-            waveform,
-            speed,
-            depth,
-        }
-    }
-
     // return depth * (-1..1)
     fn waveform(&self, pos: f32) -> f32 {
         let value = self.depth

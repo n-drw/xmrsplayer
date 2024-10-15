@@ -1,4 +1,5 @@
 #[cfg(feature = "micromath")]
+#[allow(unused_imports)]
 use micromath::F32Ext;
 #[cfg(feature = "libm")]
 use num_traits::float::Float;
@@ -9,6 +10,7 @@ pub fn lerp(u: f32, v: f32, t: f32) -> f32 {
     t.mul_add(v - u, u)
 }
 
+#[allow(unused)]
 #[inline(always)]
 pub fn inverse_lerp(u: f32, v: f32, lerp: f32) -> f32 {
     (lerp - u) / (v - u)

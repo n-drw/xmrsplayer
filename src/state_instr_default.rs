@@ -1,4 +1,5 @@
 #[cfg(feature = "micromath")]
+#[allow(unused_imports)]
 use micromath::F32Ext;
 #[cfg(feature = "libm")]
 use num_traits::float::Float;
@@ -157,33 +158,23 @@ impl<'a> StateInstrDefault<'a> {
         }
     }
 
-    /// get finetune only
-    pub fn get_finetune(&self) -> f32 {
-        match &self.state_sample {
-            Some(s) if s.is_enabled() => s.get_finetune(),
-            _ => 0.0,
-        }
-    }
-
     pub fn set_finetune(&mut self, finetune: f32) {
-        match &mut self.state_sample {
-            Some(s) if s.is_enabled() => s.set_finetune(finetune),
-            _ => {}
+        if let Some(s) = &mut self.state_sample {
+            if s.is_enabled() {
+                s.set_finetune(finetune);
+            }
         }
     }
 
     pub fn update_frequency(&mut self, period: f32, arp_note: f32, finetune: f32, semitone: bool) {
-        match &mut self.state_sample {
-            Some(s) => {
-                let period_adjusted = self.period_helper.adjust_period(
-                    period,
-                    arp_note,
-                    finetune + self.state_vibrato.current_modulation,
-                    semitone,
-                );
-                s.set_step(self.period_helper.period_to_frequency(period_adjusted))
-            }
-            None => {}
+        if let Some(s) = &mut self.state_sample {
+            let period_adjusted = self.period_helper.adjust_period(
+                period,
+                arp_note,
+                finetune + self.state_vibrato.current_modulation,
+                semitone,
+            );
+            s.set_step(self.period_helper.period_to_frequency(period_adjusted))
         }
     }
 
