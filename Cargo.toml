@@ -43,5 +43,5 @@ panic = "abort"
 
 [[bin]]
 name = "xmrsplayer"
-path = "examples/cpal_player.rs"
+path = "src/bin/cpal_player.rs"
 required-features = [ "demo" ]
