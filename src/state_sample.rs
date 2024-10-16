@@ -73,12 +73,12 @@ impl<'a> StateSample<'a> {
         self.finetune = finetune;
     }
 
-    fn tick(&mut self) -> f32 {
+    fn tick(&mut self) -> (f32, f32) {
         let a: u32 = self.position as u32;
         let b: u32 = a + 1;
         let t: f32 = self.position - a as f32;
 
-        let mut u: f32 = self.sample.at(a as usize);
+        let mut u = self.sample.at(a as usize);
 
         let loop_end = self.sample.loop_start + self.sample.loop_length;
 
@@ -91,7 +91,7 @@ impl<'a> StateSample<'a> {
                 if b < self.sample.len() as u32 {
                     self.sample.at(b as usize)
                 } else {
-                    0.0
+                    (0.0, 0.0)
                 }
             }
             LoopType::Forward => {
@@ -163,12 +163,12 @@ impl<'a> StateSample<'a> {
                 }
             }
         };
-        lerp(u, v, t)
+        (lerp(u.0, v.0, t), lerp(u.1, v.1, t))
     }
 }
 
 impl<'a> Iterator for StateSample<'a> {
-    type Item = f32;
+    type Item = (f32, f32);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.position >= 0.0 {

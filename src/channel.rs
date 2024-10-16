@@ -834,7 +834,7 @@ impl<'a> Iterator for Channel<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         match &mut self.instr {
             Some(i) => match i.next() {
-                Some(fval) => Some((fval * self.actual_volume[0], fval * self.actual_volume[1])),
+                Some(fval) => Some((fval.0 * self.actual_volume[0], fval.1 * self.actual_volume[1])),
                 None => None,
             },
             None => None,

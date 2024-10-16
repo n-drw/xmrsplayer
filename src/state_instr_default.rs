@@ -212,7 +212,7 @@ impl<'a> StateInstrDefault<'a> {
 }
 
 impl<'a> Iterator for StateInstrDefault<'a> {
-    type Item = f32;
+    type Item = (f32, f32);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.is_enabled() {
