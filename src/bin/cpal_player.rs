@@ -19,8 +19,12 @@ struct Cli {
     #[arg(short = 'f', long, required = true, value_name = "filename")]
     filename: Option<String>,
 
+    /// Choose output wave file
+    #[arg(short = 'o', long, value_name = "output filename")]
+    output: Option<String>,
+    
     /// Choose amplification
-    #[arg(short = 'a', long, default_value = "1.0")]
+    #[arg(short = 'a', long, default_value = "10.0")]
     amplification: f32,
 
     /// Play only a specific channel (from 1 to n, 0 for all)
@@ -75,7 +79,7 @@ fn sid_test_player(cli: &Cli) {
     let leaked_modules: &'static [Module] = Box::leak(modules.into_boxed_slice());
     let module_ref: &'static Module = &leaked_modules[0];
 
-    cpal_play(
+    play_music(
         module_ref,
         cli.amplification,
         cli.position,
@@ -84,6 +88,7 @@ fn sid_test_player(cli: &Cli) {
         cli.ch,
         cli.speed,
         false,
+        cli.output.clone(),
     );
 }
 
@@ -117,7 +122,7 @@ fn main() -> Result<(), std::io::Error> {
 
                             let module = Box::new(module);
                             let module_ref: &'static Module = Box::leak(module);
-                            cpal_play(
+                            play_music(
                                 module_ref,
                                 cli.amplification,
                                 cli.position,
@@ -125,7 +130,8 @@ fn main() -> Result<(), std::io::Error> {
                                 cli.debug,
                                 cli.ch,
                                 cli.speed,
-                                false,
+                                cli.historical,
+                                cli.output.clone(),
                             );
                         }
                         Err(e) => {
@@ -142,7 +148,7 @@ fn main() -> Result<(), std::io::Error> {
                             println!("Playing {} !", module.name);
                             let module = Box::new(module);
                             let module_ref: &'static Module = Box::leak(module);
-                            cpal_play(
+                            play_music(
                                 module_ref,
                                 cli.amplification,
                                 cli.position,
@@ -151,6 +157,7 @@ fn main() -> Result<(), std::io::Error> {
                                 cli.ch,
                                 cli.speed,
                                 false,
+                                cli.output.clone(),
                             );
                         }
                         Err(e) => {
@@ -167,7 +174,7 @@ fn main() -> Result<(), std::io::Error> {
                             println!("Playing {} !", module.name);
                             let module = Box::new(module);
                             let module_ref: &'static Module = Box::leak(module);
-                            cpal_play(
+                            play_music(
                                 module_ref,
                                 cli.amplification,
                                 cli.position,
@@ -176,6 +183,7 @@ fn main() -> Result<(), std::io::Error> {
                                 cli.ch,
                                 cli.speed,
                                 false,
+                                cli.output.clone(),
                             );
                         }
                         Err(e) => {
@@ -193,7 +201,7 @@ fn main() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn cpal_play(
+fn play_music(
     module: &'static Module,
     amplification: f32,
     position: usize,
@@ -202,6 +210,7 @@ fn cpal_play(
     ch: u8,
     speed: u16,
     historical: bool,
+    output: Option<String>,
 ) {
     let host = cpal::default_host();
     let device = host
@@ -242,73 +251,124 @@ fn cpal_play(
         player_lock.goto(position, 0, speed);
     }
 
-    let player_clone = Arc::clone(&player);
-    let stream = device
-        .build_output_stream(
-            &config.config(),
-            move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                let mut player_lock = player_clone.lock().unwrap();
-                for sample in data.iter_mut() {
-                    *sample = player_lock.next().unwrap_or(0.0);
-                }
-            },
-            |_: cpal::StreamError| {},
-            None,
-        )
-        .expect("failed to build output stream");
+    if let Some(output) = output {
+        println!("writing {}...", output);
+        write_wave(player, output.as_str()).unwrap();
+    } else {
+        let player_clone = Arc::clone(&player);
+        let stream = device
+            .build_output_stream(
+                &config.config(),
+                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
 
-    stream.play().expect("failed to play stream");
-
-    let stdout = Term::stdout();
-    println!(
-        "Enter key for info, Space for pause, left or right arrow to move, escape key to exit..."
-    );
-    let mut playing = true;
-    loop {
-        if let Ok(character) = stdout.read_key() {
-            match character {
-                Key::Enter => {
-                    let ti = player.lock().unwrap().get_current_table_index();
-                    let p = player.lock().unwrap().get_current_pattern();
-                    println!("current table index:{:02x}, current pattern:{:02x}", ti, p);
-                }
-                Key::Escape => {
-                    println!("Have a nice day!");
-                    return;
-                }
-                Key::ArrowLeft => {
-                    let i = player.lock().unwrap().get_current_table_index();
-                    if i != 0 {
-                        player.lock().unwrap().goto(i - 1, 0, 0);
+                    let mut player_lock = player_clone.lock().unwrap();
+                    data.iter_mut()
+                        .zip(player_lock.by_ref()) // itère sur les deux en parallèle
+                        .for_each(|(sample, value)| *sample = value);
+                },
+                |_: cpal::StreamError| {},
+                None,
+            )
+            .expect("failed to build output stream");
+    
+        stream.play().expect("failed to play stream");
+    
+        let stdout = Term::stdout();
+        println!(
+            "Enter key for info, Space for pause, left or right arrow to move, escape key to exit..."
+        );
+        let mut playing = true;
+        loop {
+            if let Ok(character) = stdout.read_key() {
+                match character {
+                    Key::Enter => {
+                        let ti = player.lock().unwrap().get_current_table_index();
+                        let p = player.lock().unwrap().get_current_pattern();
+                        println!("current table index:{:02x}, current pattern:{:02x}", ti, p);
                     }
-                }
-                Key::ArrowRight => {
-                    let len = module.pattern_order.len();
-                    let i = player.lock().unwrap().get_current_table_index();
-                    if i + 1 < len {
-                        player.lock().unwrap().goto(i + 1, 0, 0);
+                    Key::Escape => {
+                        println!("Have a nice day!");
+                        return;
                     }
-                }
-                Key::Char(' ') => {
-                    if playing {
-                        println!("Pause, press space to continue");
-                        player.lock().unwrap().pause(true);
-                        playing = false;
+                    Key::Char('q') => {
+                        println!("Have a nice day!");
+                        return;
+                    }
+                    Key::ArrowLeft => {
+                        let i = player.lock().unwrap().get_current_table_index();
+                        if i != 0 {
+                            player.lock().unwrap().goto(i - 1, 0, 0);
+                        }
+                    }
+                    Key::ArrowRight => {
+                        let len = module.pattern_order.len();
+                        let i = player.lock().unwrap().get_current_table_index();
+                        if i + 1 < len {
+                            player.lock().unwrap().goto(i + 1, 0, 0);
+                        }
+                    }
+                    Key::Char(' ') => {
+                        if playing {
+                            println!("Pause, press space to continue");
+                            player.lock().unwrap().pause(true);
+                            playing = false;
+                            {
+                                let player_lock = player.lock().unwrap();
+                                let ti = player_lock.get_current_table_index();
+                                let p = player_lock.get_current_pattern();
+                                let row = player_lock.get_current_row();
+                                println!("Pattern [{:02X}]={:02X}, Row {:02X}", ti, p, row);
+                            }
+                        } else {
+                            println!("Playing");
+                            player.lock().unwrap().pause(false);
+                            playing = true;
+                        }
+                    }
+                    Key::Char('i') => {
                         {
                             let player_lock = player.lock().unwrap();
-                            let ti = player_lock.get_current_table_index();
-                            let p = player_lock.get_current_pattern();
-                            let row = player_lock.get_current_row();
-                            println!("Pattern [{:02X}]={:02X}, Row {:02X}", ti, p, row);
+                            println!("name:{}\ncomment:{}",player_lock.module.name,player_lock.module.comment);
+                            println!("speed={}, generated samples:{}, loop count:{}",player_lock.get_tempo(), player_lock.generated_samples,player_lock.get_loop_count());
+                            for (i, instr) in player_lock.module.instrument.iter().enumerate() {
+                                if instr.name != "" {
+                                    println!("instrument {:2}: {}", i, instr.name);
+                                }
+                            }
                         }
-                    } else {
-                        println!("Playing");
-                        player.lock().unwrap().pause(false);
-                        playing = true;
                     }
+                    _ => {}
                 }
-                _ => {}
             }
         }
     }
 }
+
+
+use hound::{WavWriter, WavSpec, SampleFormat};
+
+fn write_wave(amp: Arc<Mutex<XmrsPlayer>>, output_file: &str) -> Result<(), Box<dyn std::error::Error>>
+{
+    let spec = WavSpec {
+        channels: 2,
+        sample_rate: 44100,
+        bits_per_sample: 16,
+        sample_format: SampleFormat::Int,
+    };
+
+    let mut writer = WavWriter::create(output_file, spec)?;
+    amp.lock().unwrap().set_max_loop_count(1);
+    let player_clone = Arc::clone(&amp);
+    let mut player_lock = player_clone.lock().unwrap();
+
+    for sample in player_lock.by_ref() {
+        let sample_i16 = (sample * 32767.0).round() as i16;
+        writer.write_sample(sample_i16)?;
+    }
+
+    writer.finalize()?;
+    Ok(())
+}
+
+
+

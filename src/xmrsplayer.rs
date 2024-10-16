@@ -6,7 +6,7 @@ use alloc::{vec, vec::Vec};
 use xmrs::prelude::*;
 
 pub struct XmrsPlayer<'a> {
-    module: &'a Module,
+    pub module: &'a Module,
     sample_rate: f32,
 
     tempo: u16,
@@ -116,6 +116,14 @@ impl<'a> XmrsPlayer<'a> {
 
     pub fn get_sample_rate(&self) -> f32 {
         self.sample_rate
+    }
+
+    pub fn get_tempo(&self) -> usize {
+        self.tempo as usize
+    }
+
+    pub fn get_bpm(&self) -> usize {
+        self.bpm as usize
     }
 
     /// Jump to row at index table_position in pattern_order at speed
