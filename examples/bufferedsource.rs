@@ -27,7 +27,7 @@ impl<'a> BufferedSource<'a> {
     fn generate_samples(&mut self) {
         let numsamples = self.buffer.len() / 2;
         for i in 0..numsamples {
-            match self.player.lock().unwrap().sample() {
+            match self.player.lock().unwrap().sample(true) {
                 Some((left, right)) => {
                     self.buffer[2 * i] = left;
                     self.buffer[2 * i + 1] = right;

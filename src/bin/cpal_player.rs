@@ -39,7 +39,7 @@ struct Cli {
     #[arg(short = 'l', long, default_value = "0")]
     loops: usize,
 
-    /// Force historical fT2 replay (default: autodetect)
+    /// Force historical ft2 replay (default: autodetect)
     #[arg(short = 't', long, default_value = "false")]
     historical: bool,
 
