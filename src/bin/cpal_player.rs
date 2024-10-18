@@ -22,7 +22,7 @@ struct Cli {
     /// Choose output wave file
     #[arg(short = 'o', long, value_name = "output filename")]
     output: Option<String>,
-    
+
     /// Choose amplification
     #[arg(short = 'a', long, default_value = "10.0")]
     amplification: f32,
@@ -260,7 +260,6 @@ fn play_music(
             .build_output_stream(
                 &config.config(),
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-
                     let mut player_lock = player_clone.lock().unwrap();
                     data.iter_mut()
                         .zip(player_lock.by_ref()) // itère sur les deux en parallèle
@@ -270,9 +269,9 @@ fn play_music(
                 None,
             )
             .expect("failed to build output stream");
-    
+
         stream.play().expect("failed to play stream");
-    
+
         let stdout = Term::stdout();
         println!(
             "Enter key for info, Space for pause, left or right arrow to move, escape key to exit..."
@@ -326,14 +325,20 @@ fn play_music(
                         }
                     }
                     Key::Char('i') => {
-                        {
-                            let player_lock = player.lock().unwrap();
-                            println!("name:{}\ncomment:{}",player_lock.module.name,player_lock.module.comment);
-                            println!("speed={}, generated samples:{}, loop count:{}",player_lock.get_tempo(), player_lock.generated_samples,player_lock.get_loop_count());
-                            for (i, instr) in player_lock.module.instrument.iter().enumerate() {
-                                if instr.name != "" {
-                                    println!("instrument {:2}: {}", i, instr.name);
-                                }
+                        let player_lock = player.lock().unwrap();
+                        println!(
+                            "name:{}\ncomment:{}",
+                            player_lock.module.name, player_lock.module.comment
+                        );
+                        println!(
+                            "speed={}, generated samples:{}, loop count:{}",
+                            player_lock.get_tempo(),
+                            player_lock.generated_samples,
+                            player_lock.get_loop_count()
+                        );
+                        for (i, instr) in player_lock.module.instrument.iter().enumerate() {
+                            if instr.name != "" {
+                                println!("instrument {:2}: {}", i, instr.name);
                             }
                         }
                     }
@@ -344,11 +349,12 @@ fn play_music(
     }
 }
 
+use hound::{SampleFormat, WavSpec, WavWriter};
 
-use hound::{WavWriter, WavSpec, SampleFormat};
-
-fn write_wave(amp: Arc<Mutex<XmrsPlayer>>, output_file: &str) -> Result<(), Box<dyn std::error::Error>>
-{
+fn write_wave(
+    amp: Arc<Mutex<XmrsPlayer>>,
+    output_file: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let spec = WavSpec {
         channels: 2,
         sample_rate: 44100,
@@ -369,6 +375,3 @@ fn write_wave(amp: Arc<Mutex<XmrsPlayer>>, output_file: &str) -> Result<(), Box<
     writer.finalize()?;
     Ok(())
 }
-
-
-

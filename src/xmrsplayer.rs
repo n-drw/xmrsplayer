@@ -241,7 +241,7 @@ impl<'a> XmrsPlayer<'a> {
                         } else {
                             /* Set loop start point */
                             ch.pattern_loop_origin = self.current_row;
-                            if let Some(_hhelper) = &self.hhelper {
+                            if self.hhelper.is_some() {
                                 // Replicate FT2 E60 bug
                                 self.jump_row = ch.pattern_loop_origin;
                             }
@@ -392,7 +392,7 @@ impl<'a> XmrsPlayer<'a> {
                 self.extra_ticks = 0;
             }
 
-            if let Some(hhelper) = &mut self.hhelper {
+          if let Some(hhelper) = &mut self.hhelper {
                 hhelper.set_tempo(self.tempo);
             }
             /* FT2 manual says number of ticks / second = BPM * 0.4 */

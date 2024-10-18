@@ -77,7 +77,7 @@ impl<'a> Channel<'a> {
         let period_helper = PeriodHelper::new(module.frequency_type, historical.is_some());
         Self {
             module,
-            historical: historical.clone(),
+            historical: historical,
             period_helper: period_helper.clone(),
             rate,
             volume: 1.0,
@@ -147,7 +147,7 @@ impl<'a> Channel<'a> {
     }
 
     fn key_off(&mut self, tick: u16) {
-        if let Some(_hhelper) = &self.historical {
+        if self.historical.is_some() {
             self.key_off_historical(tick);
             return;
         }
@@ -786,7 +786,7 @@ impl<'a> Channel<'a> {
     }
 
     fn tick0_load_instrument_and_note(&mut self) {
-        if let Some(_hhelper) = &self.historical {
+        if self.historical.is_some() {
             if self.current.effect_type == 0x14 {
                 // Historical Kxy effect bug
                 return;
@@ -834,7 +834,10 @@ impl<'a> Iterator for Channel<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         match &mut self.instr {
             Some(i) => match i.next() {
-                Some(fval) => Some((fval.0 * self.actual_volume[0], fval.1 * self.actual_volume[1])),
+                Some(fval) => Some((
+                    fval.0 * self.actual_volume[0],
+                    fval.1 * self.actual_volume[1],
+                )),
                 None => None,
             },
             None => None,

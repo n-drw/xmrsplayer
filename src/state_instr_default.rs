@@ -169,13 +169,8 @@ impl<'a> StateInstrDefault<'a> {
 
     pub fn update_frequency(&mut self, period: f32, arp_note: f32, finetune: f32, semitone: bool) {
         if let Some(s) = &mut self.state_sample {
-            let period_adjusted = self.period_helper.adjust_period(
-                period,
-                arp_note,
-                finetune + self.state_vibrato.current_modulation,
-                semitone,
-            );
-            s.set_step(self.period_helper.period_to_frequency(period_adjusted))
+            let f = self.period_helper.all_to_frequency(period, arp_note, finetune, semitone);
+            s.set_step(f);
         }
     }
 

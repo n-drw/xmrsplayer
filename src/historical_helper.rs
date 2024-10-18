@@ -7,7 +7,7 @@ use num_traits::float::Float;
 
 /// Struct is very small we can clone it everywhere in other structs...
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Copy)]
 pub struct HistoricalHelper {
     pub tempo: u16,
 }
