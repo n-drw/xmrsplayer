@@ -8,9 +8,9 @@ pub struct StateSample<'a> {
     sample: &'a Sample,
     finetune: f32,
     /// current seek position
-    position: f32,
+    position: f64,
     /// step is freq / rate
-    step: f32,
+    step: f64,
     /// For ping-pong samples: true is -->, false is <--
     ping: bool,
     // Output frequency
@@ -37,14 +37,14 @@ impl<'a> StateSample<'a> {
     }
 
     pub fn set_step(&mut self, frequency: f32) {
-        self.step = frequency / self.rate;
+        self.step = frequency as f64 / self.rate as f64;
     }
 
     pub fn set_position(&mut self, position: usize) {
         if position >= self.sample.len() {
             self.disable();
         } else {
-            self.position = position as f32;
+            self.position = position as f64;
         }
     }
 
@@ -76,7 +76,7 @@ impl<'a> StateSample<'a> {
     fn tick(&mut self) -> (f32, f32) {
         let a: u32 = self.position as u32;
         let b: u32 = a + 1;
-        let t: f32 = self.position - a as f32;
+        let t: f32 = self.position as f32 - a as f32;
 
         let mut u = self.sample.at(a as usize);
 
@@ -85,30 +85,22 @@ impl<'a> StateSample<'a> {
         let v = match self.sample.flags {
             LoopType::No => {
                 self.position += self.step;
-                if self.position >= self.sample.len() as f32 {
+                if self.position >= self.sample.len() as f64 {
                     self.disable();
                 }
                 if b < self.sample.len() as u32 {
                     self.sample.at(b as usize)
                 } else {
-                    (0.0, 0.0)
+                    u // no sample crack at end
                 }
             }
             LoopType::Forward => {
                 self.position += self.step;
 
-                // while self.position >= loop_end as f32 {
-                //     self.position -= self.loop_length as f32;
-                // }
-
-                if self.position >= loop_end as f32 {
-                    let delta = (self.position - loop_end as f32) % self.sample.loop_length as f32;
-                    self.position = self.sample.loop_start as f32 + delta;
+                if self.position >= loop_end as f64 {
+                    let delta = (self.position - loop_end as f64) % self.sample.loop_length as f64;
+                    self.position = self.sample.loop_start as f64 + delta;
                 }
-                /* sanity checking */
-                // if self.position >= self.sample.len() as f32 {
-                //     self.position = self.sample.len() as f32 - 1.0;
-                // }
 
                 let seek = if b >= loop_end {
                     self.sample.loop_start
@@ -125,26 +117,26 @@ impl<'a> StateSample<'a> {
                 }
 
                 if self.ping {
-                    if self.position >= loop_end as f32 {
+                    if self.position >= loop_end as f64 {
                         self.ping = false;
                         let delta =
-                            (self.position - loop_end as f32) % self.sample.loop_length as f32;
-                        self.position = loop_end as f32 - delta;
+                            (self.position - loop_end as f64) % self.sample.loop_length as f64;
+                        self.position = loop_end as f64 - delta;
                     }
                     /* sanity checking */
-                    if self.position >= self.sample.len() as f32 {
+                    if self.position >= self.sample.len() as f64 {
                         self.ping = false;
-                        self.position = self.sample.len() as f32 - 1.0;
+                        self.position = self.sample.len() as f64 - 1.0;
                     }
 
                     let seek = if b >= loop_end { a } else { b };
                     self.sample.at(seek as usize)
                 } else {
-                    if self.position <= self.sample.loop_start as f32 {
+                    if self.position <= self.sample.loop_start as f64 {
                         self.ping = true;
-                        let delta = (self.sample.loop_start as f32 - self.position)
-                            % self.sample.loop_length as f32;
-                        self.position = self.sample.loop_start as f32 + delta;
+                        let delta = (self.sample.loop_start as f64 - self.position)
+                            % self.sample.loop_length as f64;
+                        self.position = self.sample.loop_start as f64 + delta;
                     }
                     /* sanity checking */
                     if self.position <= 0.0 {

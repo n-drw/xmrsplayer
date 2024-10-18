@@ -7,6 +7,19 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Debug executable 'cpal_player'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--features=demo",
+                ],
+            },
+            "args": ["-f","/home/user/example.xm"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug executable 'rodio_player'",
             "cargo": {
                 "args": [
@@ -23,64 +36,5 @@
             "args": ["-t", "-d", "-f","/home/user/Downloads/test.xm","-p","0","-c","1"],
             "cwd": "${workspaceFolder}"
         },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug unit tests in executable 'rodio_player'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--package=xmrsplayer",
-                    "--features=demo",
-                    "--example=rodio_player"
-                ],
-                "filter": {
-                    "name": "rodio_player",
-                    "kind": "example"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug executable 'cpal_player'",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--package=xmrsplayer",
-                    "--features=demo",
-                    "--example=cpal_player"
-                ],
-                "filter": {
-                    "name": "cpal_player",
-                    "kind": "example"
-                }
-            },
-            "args": ["-f DEADLOCK.XM"],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug unit tests in executable 'cpal_player'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--package=xmrsplayer",
-                    "--features=demo",
-                    "--example=cpal_player"
-                ],
-                "filter": {
-                    "name": "cpal_player",
-                    "kind": "example"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        }
     ]
 }

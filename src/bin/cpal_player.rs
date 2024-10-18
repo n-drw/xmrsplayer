@@ -274,7 +274,7 @@ fn play_music(
 
         let stdout = Term::stdout();
         println!(
-            "Enter key for info, Space for pause, left or right arrow to move, escape key to exit..."
+            "Enter and i keys for info, Space for pause, left or right arrow to move, escape key to exit..."
         );
         let mut playing = true;
         loop {

@@ -169,7 +169,9 @@ impl<'a> StateInstrDefault<'a> {
 
     pub fn update_frequency(&mut self, period: f32, arp_note: f32, finetune: f32, semitone: bool) {
         if let Some(s) = &mut self.state_sample {
-            let f = self.period_helper.all_to_frequency(period, arp_note, finetune, semitone);
+            let f = self
+                .period_helper
+                .all_to_frequency_cached(period, arp_note, finetune, semitone);
             s.set_step(f);
         }
     }

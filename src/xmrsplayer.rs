@@ -392,7 +392,7 @@ impl<'a> XmrsPlayer<'a> {
                 self.extra_ticks = 0;
             }
 
-          if let Some(hhelper) = &mut self.hhelper {
+            if let Some(hhelper) = &mut self.hhelper {
                 hhelper.set_tempo(self.tempo);
             }
             /* FT2 manual says number of ticks / second = BPM * 0.4 */
