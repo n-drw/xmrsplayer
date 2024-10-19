@@ -3,6 +3,19 @@ use crate::helper::*;
 use xmrs::prelude::*;
 use xmrs::sample::Sample;
 
+#[cfg(feature = "micromath")]
+#[allow(unused_imports)]
+use micromath::F32Ext;
+#[cfg(feature = "libm")]
+#[allow(unused_imports)]
+use num_traits::float::Float;
+
+
+enum PositionType {
+    Float(f64),  // Utilise f64 pour une meilleure précision
+    Fixed(u64),  // Utilise un entier fixe avec un multiplicateur
+}
+
 #[derive(Clone)]
 pub struct StateSample<'a> {
     sample: &'a Sample,
@@ -71,91 +84,33 @@ impl<'a> StateSample<'a> {
 
     pub fn set_finetune(&mut self, finetune: f32) {
         self.finetune = finetune;
-    }
+    }    
 
     fn tick(&mut self) -> (f32, f32) {
-        let a: u32 = self.position as u32;
-        let b: u32 = a + 1;
-        let t: f32 = self.position as f32 - a as f32;
+        let t= self.position.fract() as f32;
 
-        let mut u = self.sample.at(a as usize);
-
-        let loop_end = self.sample.loop_start + self.sample.loop_length;
-
-        let v = match self.sample.flags {
-            LoopType::No => {
+        match self.sample.meta_at(self.position as usize) {
+            Some( (_pos, u) ) => {
                 self.position += self.step;
-                if self.position >= self.sample.len() as f64 {
-                    self.disable();
+                match self.sample.meta_at(self.position as usize + 1) {
+                    Some( (pos2, v)) => {
+                        self.position = pos2  as f64 + t as f64;
+                        return (lerp(u.0, v.0, t), lerp(u.1, v.1, t));
+                    },
+                    None => {
+                        self.disable();
+                        return u;
+                    }
                 }
-                if b < self.sample.len() as u32 {
-                    self.sample.at(b as usize)
-                } else {
-                    u // no sample crack at end
-                }
+
+            },
+            None => {
+                #[cfg(feature = "std")]
+                println!("This can't happen?");
+                self.disable();
+                return (0.0, 0.0);  // FIXME: may create crack?
             }
-            LoopType::Forward => {
-                self.position += self.step;
-
-                if self.position >= loop_end as f64 {
-                    let delta = (self.position - loop_end as f64) % self.sample.loop_length as f64;
-                    self.position = self.sample.loop_start as f64 + delta;
-                }
-
-                let seek = if b >= loop_end {
-                    self.sample.loop_start
-                } else {
-                    b
-                };
-                self.sample.at(seek as usize)
-            }
-            LoopType::PingPong => {
-                if self.ping {
-                    self.position += self.step;
-                } else {
-                    self.position -= self.step;
-                }
-
-                if self.ping {
-                    if self.position >= loop_end as f64 {
-                        self.ping = false;
-                        let delta =
-                            (self.position - loop_end as f64) % self.sample.loop_length as f64;
-                        self.position = loop_end as f64 - delta;
-                    }
-                    /* sanity checking */
-                    if self.position >= self.sample.len() as f64 {
-                        self.ping = false;
-                        self.position = self.sample.len() as f64 - 1.0;
-                    }
-
-                    let seek = if b >= loop_end { a } else { b };
-                    self.sample.at(seek as usize)
-                } else {
-                    if self.position <= self.sample.loop_start as f64 {
-                        self.ping = true;
-                        let delta = (self.sample.loop_start as f64 - self.position)
-                            % self.sample.loop_length as f64;
-                        self.position = self.sample.loop_start as f64 + delta;
-                    }
-                    /* sanity checking */
-                    if self.position <= 0.0 {
-                        self.ping = true;
-                        self.position = 0.0;
-                    }
-
-                    let v = u;
-                    let seek = if b == 1 || b - 2 <= self.sample.loop_start {
-                        a
-                    } else {
-                        b - 2
-                    };
-                    u = self.sample.at(seek as usize);
-                    v
-                }
-            }
-        };
-        (lerp(u.0, v.0, t), lerp(u.1, v.1, t))
+        }
     }
 }
 
