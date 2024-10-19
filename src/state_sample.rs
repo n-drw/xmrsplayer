@@ -10,12 +10,6 @@ use micromath::F32Ext;
 #[allow(unused_imports)]
 use num_traits::float::Float;
 
-
-enum PositionType {
-    Float(f64),  // Utilise f64 pour une meilleure précision
-    Fixed(u64),  // Utilise un entier fixe avec un multiplicateur
-}
-
 #[derive(Clone)]
 pub struct StateSample<'a> {
     sample: &'a Sample,
@@ -94,7 +88,6 @@ impl<'a> StateSample<'a> {
                 self.position += self.step;
                 match self.sample.meta_at(self.position as usize + 1) {
                     Some( (pos2, v)) => {
-                        self.position = pos2  as f64 + t as f64;
                         return (lerp(u.0, v.0, t), lerp(u.1, v.1, t));
                     },
                     None => {
