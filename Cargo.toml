@@ -31,6 +31,7 @@ libm = ["num-traits/libm", "xmrs/libm"]
 micromath = ["dep:micromath", "xmrs/micromath"]
 sid = ["xmrs/import_sid"]
 std = ["xmrs/std"]
+use_f64 = []
 
 [lib]
 name = "xmrsplayer"
