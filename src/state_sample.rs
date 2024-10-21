@@ -9,14 +9,7 @@ use micromath::F32Ext;
 #[allow(unused_imports)]
 use num_traits::float::Float;
 
-/*
-with u32, position seek can be for...
-  - 12 bits : 32 - 12 = 24 bits, 2^24 = 16 MB
-  - 16 bits : 32 - 16 = 16 bits, 2^16 = 65536 B
-  - ...
-  - 20 bits : 32 - 20 = 12 bits, 2^12 = 4096 B
-*/
-const M: u32 = 20; // M bits for fract part
+const M: u32 = 28; // 28 bits for fract part seems the better i can have
 const M_MASK: u32 = (1<<M) - 1;
 
 #[derive(Clone)]
