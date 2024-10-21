@@ -9,64 +9,42 @@ use micromath::F32Ext;
 #[allow(unused_imports)]
 use num_traits::float::Float;
 
-#[cfg(feature = "use_f64")]
-type FixedOrFloat = f64;
-
-#[cfg(not(feature = "use_f64"))]
-type FixedOrFloat = u32;
-
 /*
-with u32, sample size max:
- 6 : 26 bits = 64 MB
- 7 : 25 bits = 32 MB
- 8 : 24 bits = 16 MB
- 9 : 23 bits =  8 MB
-10 : 22 bits =  4 MB
-11 : 21 bits =  2 MB
-12 : 20 bits =  1 MB
+with u32, position seek can be for...
+  - 12 bits : 32 - 12 = 24 bits, 2^24 = 16 MB
+  - 16 bits : 32 - 16 = 16 bits, 2^16 = 65536 B
+  - ...
+  - 20 bits : 32 - 20 = 12 bits, 2^12 = 4096 B
 */
-#[cfg(not(feature = "use_f64"))]
-const M: FixedOrFloat = 8; // multiplicator (2^M): Here we choose 8 because 32 - 8 = 24 bits <=> 2^24 = 16 MB compatible with historical maximum ft2 sample size.
+const M: u32 = 20; // M bits for fract part
+const M_MASK: u32 = (1<<M) - 1;
 
 #[derive(Clone)]
 pub struct StateSample<'a> {
     sample: &'a Sample,
     finetune: f32,
     /// current seek position
-    position: FixedOrFloat,
+    position: (u32, u32), // ( Position, Fract part M shifted )
     /// step is freq / rate
-    step: Option<FixedOrFloat>,
+    step: Option<u32>, // step, M shifted
     // Output frequency
     rate: f32,
 }
 
 impl<'a> StateSample<'a> {
     pub fn new(sample: &'a Sample, rate: f32) -> Self {
-        let position = StateSample::default_position();
         let finetune = sample.finetune;
         Self {
             sample,
             finetune,
-            position,
+            position: (0,0),
             step: None,
             rate,
         }
     }
 
-    #[inline(always)]
-    fn default_position() -> FixedOrFloat {
-        #[cfg(feature = "use_f64")]
-        {
-            0.0
-        }
-        #[cfg(not(feature = "use_f64"))]
-        {
-            0
-        }
-    }
-
     pub fn reset(&mut self) {
-        self.position = StateSample::default_position();
+        self.position = (0,0);
         self.step = None;
     }
 
@@ -74,14 +52,7 @@ impl<'a> StateSample<'a> {
         if self.sample.len() == 0 {
             self.disable();
         } else {
-            #[cfg(feature = "use_f64")]
-            {
-                self.step = Some(frequency as FixedOrFloat / self.rate as FixedOrFloat);
-            }
-            #[cfg(not(feature = "use_f64"))]
-            {
-                self.step = Some(((1 << M) as f32 * (frequency / self.rate)) as FixedOrFloat);
-            }
+            self.step = Some(((1 << M) as f32 * (frequency / self.rate)) as u32);
         }
     }
 
@@ -111,79 +82,50 @@ impl<'a> StateSample<'a> {
     }
 
     fn tick(&mut self) -> (f32, f32) {
+        let t = self.get_position_fraction() as f32 / (1<<M) as f32;
+
         let useek = self.sample.meta_seek(self.get_position() as usize);
-        let u = self.sample.at(useek.1);
-        #[cfg(feature = "use_f64")]
-        {
-            let t = self.get_position_fraction();
-            let vseek = self.sample.meta_seek(self.get_position() as usize + 1);
-            let v = self.sample.at(vseek.1);
-            self.increment_position();
-            return (lerp(u.0, v.0, t as f32), lerp(u.1, v.1, t as f32));
-        }
-        #[cfg(not(feature = "use_f64"))]
-        {
-            self.position = ((useek.0 as FixedOrFloat) << M) | self.get_position_fraction(); // update current to the smallest position
-            let t = self.get_position_fraction() as f32 / (1 << M) as f32;
-            let vseek = self.sample.meta_seek(self.get_position() as usize + 1);
-            let v = self.sample.at(vseek.1);
-            self.increment_position();
-            return (lerp(u.0, v.0, t), lerp(u.1, v.1, t));
-        }
+        let u = self.sample.at(useek);
+
+        let vseek = self.sample.meta_seek(self.get_position() as usize + 1);
+        let v = self.sample.at(vseek);
+
+        self.increment_position();
+
+        return (lerp(u.0, v.0, t), lerp(u.1, v.1, t));
     }
 
     pub fn set_position(&mut self, position: usize) {
-        if position >= self.sample.len() {
-            self.disable();
-        } else {
-            #[cfg(feature = "use_f64")]
-            {
-                self.position = position as FixedOrFloat;
-            }
-            #[cfg(not(feature = "use_f64"))]
-            {
-                self.position = (position << M) as FixedOrFloat;
-            }
-        }
+        self.position.0 = position as u32;
+        self.position.1 = 0;
     }
 
     #[inline(always)]
-    fn increment_position(&mut self) -> FixedOrFloat {
+    fn increment_position(&mut self) -> u32 {
         if let Some(step) = self.step {
-            #[cfg(feature = "use_f64")]
-            {
-                self.position += step;
-            }
-            #[cfg(not(feature = "use_f64"))]
-            {
-                self.position += step;
+            self.position.1 += step;
+            if self.position.1 > M_MASK {
+                self.position.0 += self.get_position_trunc();
+                self.position.1 = self.get_position_fraction();
             }
         }
-        return self.position;
+        return self.position.0;
     }
 
     #[inline(always)]
-    fn get_position(&mut self) -> FixedOrFloat {
-        #[cfg(feature = "use_f64")]
-        {
-            return self.position;
-        }
-        #[cfg(not(feature = "use_f64"))]
-        {
-            return self.position >> M;
-        }
+    fn get_position(&mut self) -> u32 {
+        return self.position.0;
+    }
+
+
+    #[inline(always)]
+    fn get_position_trunc(&self) -> u32 {
+        self.position.1 >> M
     }
 
     #[inline(always)]
-    fn get_position_fraction(&self) -> FixedOrFloat {
-        #[cfg(feature = "use_f64")]
-        {
-            self.position.fract()
-        }
-        #[cfg(not(feature = "use_f64"))]
-        {
-            self.position & ((1 << M) - 1)
-        }
+    fn get_position_fraction(&self) -> u32 {
+        self.position.1 & M_MASK
     }
 }
 
