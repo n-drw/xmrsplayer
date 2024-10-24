@@ -499,7 +499,7 @@ impl<'a> Channel<'a> {
                                 let finetune =
                                     (self.current.effect_parameter & 0x0F) as f32 / 8.0 - 1.0;
                                 instr.set_finetune(finetune);
-                                self.note = self.current.note.value() as f32 - 1.0
+                                self.note = self.current.note.value() as f32
                                     + instr.get_finetuned_note();
                                 self.period = self.period_helper.note_to_period(self.note);
                             }
@@ -757,7 +757,7 @@ impl<'a> Channel<'a> {
             if self.current.has_tone_portamento() {
                 if let Some(s) = &instr.state_sample {
                     if s.is_enabled() {
-                        self.note = self.current.note.value() as f32 - 1.0 + s.get_finetuned_note();
+                        self.note = self.current.note.value() as f32 + s.get_finetuned_note();
                         return;
                     }
                 }
@@ -768,7 +768,7 @@ impl<'a> Channel<'a> {
             // SetNote
             if instr.set_note(self.current.note) {
                 if let Some(s) = &instr.state_sample {
-                    self.note = self.current.note.value() as f32 - 1.0 + s.get_finetuned_note();
+                    self.note = self.current.note.value() as f32 + s.get_finetuned_note();
                 }
 
                 let trigger_flag = if self.current.instrument > 0 {

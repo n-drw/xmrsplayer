@@ -178,7 +178,7 @@ impl<'a> StateInstrDefault<'a> {
 
     pub fn set_note(&mut self, note: Note) -> bool {
         if note.is_valid() {
-            let num = self.instr.sample_for_note[note.value() as usize - 1] as usize;
+            let num = self.instr.sample_for_note[note.value() as usize] as usize;
             return self.select_sample(num);
         } else {
             return false;
