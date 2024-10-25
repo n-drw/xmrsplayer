@@ -30,8 +30,7 @@ import = ["xmrs/import_amiga", "xmrs/import_s3m", "xmrs/import_sid", "xmrs/impor
 libm = ["num-traits/libm", "xmrs/libm"]
 micromath = ["dep:micromath", "xmrs/micromath"]
 sid = ["xmrs/import_sid"]
-std = ["xmrs/std", "use_f64"]
-use_f64 = []
+std = ["xmrs/std"]
 
 [lib]
 name = "xmrsplayer"
