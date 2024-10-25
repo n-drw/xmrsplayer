@@ -66,8 +66,8 @@ impl<'a> StateSample<'a> {
     }
 
     /// use sample finetune or force if finetune arg!=0
-    pub fn get_finetuned_note(&self) -> f32 {
-        self.sample.relative_note as f32 + self.finetune
+    pub fn get_finetuned_pitch(&self) -> f32 {
+        self.sample.relative_pitch as f32 + self.finetune
     }
 
     pub fn set_finetune(&mut self, finetune: f32) {

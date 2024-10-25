@@ -39,7 +39,7 @@ pub struct Channel<'a> {
     instr: Option<StateInstrDefault<'a>>,
 
     arpeggio: EffectArpeggio,
-    multi_retrig_note: EffectMultiRetrigNote,
+    multi_retrig_pitch: EffectMultiRetrigNote,
     panning_slide: EffectVolumePanningSlide,
 
     // one memory for each shift effect
@@ -86,7 +86,7 @@ impl<'a> Channel<'a> {
             tone_portamento: EffectTonePortamento::new(period_helper.clone()),
             vibrato: EffectVibratoTremolo::vibrato(&period_helper),
             tremolo: EffectVibratoTremolo::tremolo(),
-            multi_retrig_note: EffectMultiRetrigNote::new(historical, 0.0, 0.0),
+            multi_retrig_pitch: EffectMultiRetrigNote::new(historical, 0.0, 0.0),
             note: 0.0,
             current: PatternSlot::default(),
             period: 0.0,
@@ -120,7 +120,7 @@ impl<'a> Channel<'a> {
         self.muted || midi_mute
     }
 
-    fn cut_note(&mut self) {
+    fn cut_pitch(&mut self) {
         /* NB: this is not the same as Key Off */
         self.volume = 0.0;
     }
@@ -135,14 +135,14 @@ impl<'a> Channel<'a> {
                     || self.current.volume != 0))
                 || (tick != 0 && i.has_volume_envelope())
             {
-                self.trigger_note(
+                self.trigger_pitch(
                     TRIGGER_KEEP_VOLUME | TRIGGER_KEEP_PERIOD | TRIGGER_KEEP_ENVELOPE,
                 );
             } else {
-                self.cut_note();
+                self.cut_pitch();
             }
         } else {
-            self.cut_note();
+            self.cut_pitch();
         }
     }
 
@@ -155,11 +155,11 @@ impl<'a> Channel<'a> {
         if let Some(i) = &mut self.instr {
             i.key_off();
         } else {
-            self.cut_note();
+            self.cut_pitch();
         }
     }
 
-    pub(crate) fn trigger_note(&mut self, flags: TriggerKeep) {
+    pub(crate) fn trigger_pitch(&mut self, flags: TriggerKeep) {
         self.tremor_on = false;
 
         match &mut self.instr {
@@ -209,13 +209,13 @@ impl<'a> Channel<'a> {
                 self.actual_volume[0] = volume * panning.sqrt();
                 self.actual_volume[1] = volume * (1.0 - panning).sqrt();
 
-                let arp_note = if self.current.has_arpeggio() {
+                let arp_pitch = if self.current.has_arpeggio() {
                     self.arpeggio.value()
                 } else {
                     0.0
                 };
 
-                instr.update_frequency(self.period, arp_note, self.vibrato.value(), self.semitone)
+                instr.update_frequency(self.period, arp_pitch, self.vibrato.value(), self.semitone)
             }
             None => {}
         }
@@ -277,7 +277,7 @@ impl<'a> Channel<'a> {
                         if self.current.effect_parameter & 0x0F != 0 {
                             let r = current_tick % (self.current.effect_parameter as u16 & 0x0F);
                             if r == 0 {
-                                self.trigger_note(TRIGGER_KEEP_VOLUME);
+                                self.trigger_pitch(TRIGGER_KEEP_VOLUME);
                                 if let Some(instr) = &mut self.instr {
                                     instr.tick();
                                 }
@@ -287,13 +287,13 @@ impl<'a> Channel<'a> {
                     0xC => {
                         /* ECy: Note cut */
                         if (self.current.effect_parameter as u16 & 0x0F) == current_tick {
-                            self.cut_note();
+                            self.cut_pitch();
                         }
                     }
                     0xD => {
                         /* EDy: Note delay */
                         if self.note_delay_param as u16 == current_tick {
-                            self.tick0_load_instrument_and_note();
+                            self.tick0_load_instrument_and_pitch();
                             // Volume effect
                             self.tick0_volume_effects();
                             // Effects
@@ -306,7 +306,7 @@ impl<'a> Channel<'a> {
                                         i.volume_reset();
                                     }
                                 } else {
-                                    self.trigger_note(TRIGGER_KEEP_NONE);
+                                    self.trigger_pitch(TRIGGER_KEEP_NONE);
                                 }
                             }
                         }
@@ -327,11 +327,11 @@ impl<'a> Channel<'a> {
             }
             0x1B if current_tick != 0 => {
                 /* Rxy: Multi retrig note */
-                if self.multi_retrig_note.tick() == 0.0 {
-                    self.trigger_note(TRIGGER_KEEP_VOLUME | TRIGGER_KEEP_ENVELOPE);
+                if self.multi_retrig_pitch.tick() == 0.0 {
+                    self.trigger_pitch(TRIGGER_KEEP_VOLUME | TRIGGER_KEEP_ENVELOPE);
                     if let Some(instr) = &self.instr {
                         if self.volume == 0.0 && !instr.volume_envelope.enabled {
-                            self.volume = self.multi_retrig_note.clamp(self.volume);
+                            self.volume = self.multi_retrig_pitch.clamp(self.volume);
                             let current_volume = self.current.volume;
                             if (0x10..=0x50).contains(&current_volume) {
                                 // priority on original volume
@@ -389,7 +389,7 @@ impl<'a> Channel<'a> {
     pub(crate) fn tick(&mut self, current_tick: u16) {
         if let Some(instr) = &mut self.instr {
             instr.tick();
-        } else if self.current.has_note_delay() {
+        } else if self.current.has_delay() {
             self.tick_effects(current_tick);
             self.tickn_update_instr();
             return;
@@ -500,7 +500,7 @@ impl<'a> Channel<'a> {
                                     (self.current.effect_parameter & 0x0F) as f32 / 8.0 - 1.0;
                                 instr.set_finetune(finetune);
                                 self.note = self.current.note.value() as f32
-                                    + instr.get_finetuned_note();
+                                    + instr.get_finetuned_pitch();
                                 self.period = self.period_helper.note_to_period(self.note);
                             }
                         }
@@ -515,7 +515,7 @@ impl<'a> Channel<'a> {
                     0x9 => {
                         /* E90: Retrigger note */
                         if self.current.effect_parameter & 0x0F == 0 {
-                            self.trigger_note(TRIGGER_KEEP_VOLUME);
+                            self.trigger_pitch(TRIGGER_KEEP_VOLUME);
                             if let Some(instr) = &mut self.instr {
                                 instr.tick();
                             }
@@ -543,7 +543,7 @@ impl<'a> Channel<'a> {
                         /* ED0: Note with no delay */
                         if self.current.effect_parameter & 0xF0 == 0 {
                             if self.current.note.is_none() {
-                                self.trigger_note(
+                                self.trigger_pitch(
                                     TRIGGER_KEEP_SAMPLE_POSITION
                                         | TRIGGER_KEEP_VOLUME
                                         | TRIGGER_KEEP_PERIOD,
@@ -552,7 +552,7 @@ impl<'a> Channel<'a> {
                                 if self.current.instrument == 0 {
                                     self.key_off(0);
                                 } else {
-                                    self.trigger_note(TRIGGER_KEEP_PERIOD | TRIGGER_KEEP_ENVELOPE);
+                                    self.trigger_pitch(TRIGGER_KEEP_PERIOD | TRIGGER_KEEP_ENVELOPE);
                                 }
                             }
                         }
@@ -583,7 +583,7 @@ impl<'a> Channel<'a> {
             }
             0x1B => {
                 /* Rxy: Multi retrig note */
-                self.multi_retrig_note
+                self.multi_retrig_pitch
                     .xm_update_effect(self.current.effect_parameter, 0, 0.0);
             }
             0x1D => {
@@ -708,13 +708,13 @@ impl<'a> Channel<'a> {
 
         if self.current.instrument as usize > self.module.instrument.len() {
             /* Invalid instrument, cut current note */
-            self.cut_note();
+            self.cut_pitch();
             self.instr = None;
             return false;
         }
 
         if self.current.has_tone_portamento() {
-            self.trigger_note(TRIGGER_KEEP_PERIOD | TRIGGER_KEEP_SAMPLE_POSITION);
+            self.trigger_pitch(TRIGGER_KEEP_PERIOD | TRIGGER_KEEP_SAMPLE_POSITION);
             return self.tick0_change_instr(true);
         }
 
@@ -726,26 +726,26 @@ impl<'a> Channel<'a> {
                 /* Sample position is kept, but envelopes are reset */
                 TRIGGER_KEEP_SAMPLE_POSITION | TRIGGER_KEEP_VOLUME | TRIGGER_KEEP_PERIOD
             };
-            self.trigger_note(trigger_flags);
+            self.trigger_pitch(trigger_flags);
             return self.tick0_change_instr(true);
         }
 
         if self.current.note.is_keyoff() {
-            self.trigger_note(TRIGGER_KEEP_PERIOD);
+            self.trigger_pitch(TRIGGER_KEEP_PERIOD);
             return true; // Keyoff does not change instrument
         }
 
         return self.tick0_change_instr(false);
     }
 
-    fn tick0_load_note(&mut self, new_instr: bool) {
+    fn tick0_load_pitch(&mut self, new_instr: bool) {
         // Note is note valid? Return early.
         if !self.current.note.is_valid() {
             if self.current.note.is_keyoff() {
                 if self.current.instrument == 0 || new_instr {
                     self.key_off(0);
                 } else {
-                    self.trigger_note(TRIGGER_KEEP_PERIOD | TRIGGER_KEEP_ENVELOPE);
+                    self.trigger_pitch(TRIGGER_KEEP_PERIOD | TRIGGER_KEEP_ENVELOPE);
                 }
             }
             return;
@@ -757,18 +757,18 @@ impl<'a> Channel<'a> {
             if self.current.has_tone_portamento() {
                 if let Some(s) = &instr.state_sample {
                     if s.is_enabled() {
-                        self.note = self.current.note.value() as f32 + s.get_finetuned_note();
+                        self.note = self.current.note.value() as f32 + s.get_finetuned_pitch();
                         return;
                     }
                 }
-                self.cut_note();
+                self.cut_pitch();
                 return;
             }
 
             // SetNote
-            if instr.set_note(self.current.note) {
+            if instr.set_pitch(self.current.note) {
                 if let Some(s) = &instr.state_sample {
-                    self.note = self.current.note.value() as f32 + s.get_finetuned_note();
+                    self.note = self.current.note.value() as f32 + s.get_finetuned_pitch();
                 }
 
                 let trigger_flag = if self.current.instrument > 0 {
@@ -777,15 +777,15 @@ impl<'a> Channel<'a> {
                     /* Ghost note: keep old volume */
                     TRIGGER_KEEP_VOLUME
                 };
-                self.trigger_note(trigger_flag);
+                self.trigger_pitch(trigger_flag);
                 return;
             }
         }
 
-        self.cut_note();
+        self.cut_pitch();
     }
 
-    fn tick0_load_instrument_and_note(&mut self) {
+    fn tick0_load_instrument_and_pitch(&mut self) {
         if self.historical.is_some() {
             if self.current.effect_type == 0x14 {
                 // Historical Kxy effect bug
@@ -796,17 +796,17 @@ impl<'a> Channel<'a> {
         // First, load instr
         let new_instr: bool = self.tick0_load_instrument();
         // Next, choose sample from note
-        self.tick0_load_note(new_instr);
+        self.tick0_load_pitch(new_instr);
     }
 
     pub(crate) fn tick0(&mut self, pattern_slot: &PatternSlot) {
         self.current = pattern_slot.clone();
 
-        if !self.current.has_note_delay()
-            || (self.current.has_note_delay() && self.current.effect_parameter & 0x0F == 0)
+        if !self.current.has_delay()
+            || (self.current.has_delay() && self.current.effect_parameter & 0x0F == 0)
         {
             /* load instrument then note */
-            self.tick0_load_instrument_and_note();
+            self.tick0_load_instrument_and_pitch();
             // Volume effect
             self.tick0_volume_effects();
             // Effects

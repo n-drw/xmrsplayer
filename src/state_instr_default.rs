@@ -117,7 +117,7 @@ impl<'a> StateInstrDefault<'a> {
         self.state_vibrato.reset();
     }
 
-    pub fn cut_note(&mut self) {
+    pub fn cut_pitch(&mut self) {
         self.volume = 0.0;
     }
 
@@ -127,7 +127,7 @@ impl<'a> StateInstrDefault<'a> {
 
         if !self.envelope_volume.has_volume_envelope() {
             if self.instr.volume_fadeout == 0.0 {
-                self.cut_note();
+                self.cut_pitch();
             }
         }
     }
@@ -152,9 +152,9 @@ impl<'a> StateInstrDefault<'a> {
         }
     }
 
-    pub fn get_finetuned_note(&self) -> f32 {
+    pub fn get_finetuned_pitch(&self) -> f32 {
         match &self.state_sample {
-            Some(s) if s.is_enabled() => s.get_finetuned_note(),
+            Some(s) if s.is_enabled() => s.get_finetuned_pitch(),
             _ => 0.0,
         }
     }
@@ -167,18 +167,18 @@ impl<'a> StateInstrDefault<'a> {
         }
     }
 
-    pub fn update_frequency(&mut self, period: f32, arp_note: f32, finetune: f32, semitone: bool) {
+    pub fn update_frequency(&mut self, period: f32, arp_pitch: f32, finetune: f32, semitone: bool) {
         if let Some(s) = &mut self.state_sample {
             let f = self
                 .period_helper
-                .all_to_frequency_cached(period, arp_note, finetune, semitone);
+                .all_to_frequency_cached(period, arp_pitch, finetune, semitone);
             s.set_step(f);
         }
     }
 
-    pub fn set_note(&mut self, note: Note) -> bool {
+    pub fn set_pitch(&mut self, note: Pitch) -> bool {
         if note.is_valid() {
-            let num = self.instr.sample_for_note[note.value() as usize] as usize;
+            let num = self.instr.sample_for_pitch[note.value() as usize] as usize;
             return self.select_sample(num);
         } else {
             return false;

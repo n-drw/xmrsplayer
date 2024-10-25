@@ -149,7 +149,7 @@ impl<'a> XmrsPlayer<'a> {
                 // Cleanup channels
                 let num_channels = self.module.get_num_channels();
                 for i in 0..num_channels {
-                    self.channel[i].trigger_note(TRIGGER_KEEP_PERIOD); // clean what we can
+                    self.channel[i].trigger_pitch(TRIGGER_KEEP_PERIOD); // clean what we can
                 }
 
                 // next() must call tick() then row()
