@@ -138,10 +138,15 @@ impl EffectXM2EffectPlugin for EffectVibratoTremolo {
                     self.data.depth = depth;
                 }
             }
-        } else {
-            let vol_data = param as f32 / 64.0;
+        } else if volcolumn == 1 {
+            let vol_data = (param & 0x0F) as f32 / 64.0;
             if vol_data != 0.0 {
                 self.data.speed = vol_data;
+            }
+        } else {
+            let vol_data = (param & 0x0F) as f32 / 16.0;
+            if vol_data != 0.0 {
+                self.data.depth = vol_data;
             }
         }
     }

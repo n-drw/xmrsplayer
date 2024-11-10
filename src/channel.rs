@@ -626,9 +626,17 @@ impl<'a> Channel<'a> {
             // V - 0x51..0x5F undefined...
             0x5 => self.volume = (self.current.volume - 0x20) as f32 / 64.0,
             // - - Volume slide down (0..15)
-            0x6 => {} // see tick() fn
+            0x6 => { // each tick
+                self.volume_slide
+                    .xm_update_effect(self.current.volume, 2, 64.0);
+                self.volume += self.volume_slide.tick();
+            }
             // + - Volume slide up (0..15)
-            0x7 => {} // see tick() fn
+            0x7 => { // each tick
+                self.volume_slide
+                    .xm_update_effect(self.current.volume, 1, 64.0);
+                self.volume += self.volume_slide.tick();
+            }
             // D - Fine volume slide down (0..15)
             0x8 => {
                 self.volume_slide
@@ -644,7 +652,7 @@ impl<'a> Channel<'a> {
             // S - Vibrato speed (0..15)
             0xA => self.vibrato.xm_update_effect(self.current.volume, 1, 0.0),
             // V - Vibrato depth (0..15)
-            0xB => {} // see tick() fn
+            0xB => self.vibrato.xm_update_effect(self.current.volume, 2, 0.0),
             // P - Set panning
             0xC => self.panning = (self.current.volume & 0x0F) as f32 / 16.0,
             0xD => {
