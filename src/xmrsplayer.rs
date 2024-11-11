@@ -207,9 +207,14 @@ impl<'a> XmrsPlayer<'a> {
         match pattern_slot.effect_type {
             0xB => {
                 /* Bxx: Position jump */
-                if (pattern_slot.effect_parameter as usize) < self.module.pattern_order.len() {
+                let mut param = pattern_slot.effect_parameter as usize;
+                if param == 0 {
+                    param += 1;
+                }
+                param -= 1;
+                if param < self.module.pattern_order.len() {
                     self.position_jump = true;
-                    self.jump_dest = pattern_slot.effect_parameter as usize;
+                    self.jump_dest = param;
                     self.jump_row = 0;
                 }
             }

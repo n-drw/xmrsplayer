@@ -18,6 +18,7 @@ use crate::triggerkeep::*;
 use crate::helper::*;
 use crate::state_instr_default::StateInstrDefault;
 use xmrs::prelude::*;
+use xmrs::patternslot::PatternSlot;
 
 #[derive(Clone)]
 pub struct Channel<'a> {
@@ -86,7 +87,7 @@ impl<'a> Channel<'a> {
             tone_portamento: EffectTonePortamento::new(period_helper.clone()),
             vibrato: EffectVibratoTremolo::vibrato(&period_helper),
             tremolo: EffectVibratoTremolo::tremolo(),
-            multi_retrig_pitch: EffectMultiRetrigNote::new(historical, 0.0, 0.0),
+            multi_retrig_pitch: EffectMultiRetrigNote::new(0.0, 0),
             note: 0.0,
             current: PatternSlot::default(),
             period: 0.0,
@@ -131,7 +132,7 @@ impl<'a> Channel<'a> {
             // openmpt `key_off.xm`: Key off at tick 0 (K00) is very dodgy command. If there is a note next to it, the note is ignored. If there is a volume column command or instrument next to it and the current instrument has no volume envelope, the note is faded out instead of being cut.
             if (tick == 0
                 && (i.has_volume_envelope()
-                    || self.current.instrument != 0
+                    || self.current.instrument.is_some()
                     || self.current.volume != 0))
                 || (tick != 0 && i.has_volume_envelope())
             {
@@ -273,7 +274,7 @@ impl<'a> Channel<'a> {
                 /* EXy: Extended command */
                 match self.current.effect_parameter >> 4 {
                     0x9 if current_tick != 0 => {
-                        /* E9y: Retrigger note */
+                        /* E9y: Retrig note */
                         if self.current.effect_parameter & 0x0F != 0 {
                             let r = current_tick % (self.current.effect_parameter as u16 & 0x0F);
                             if r == 0 {
@@ -301,7 +302,7 @@ impl<'a> Channel<'a> {
 
                             /* Special KeyOff cases */
                             if self.current.note.is_keyoff() {
-                                if self.current.instrument == 0 {
+                                if self.current.instrument.is_none() {
                                     if let Some(i) = &mut self.instr {
                                         i.volume_reset();
                                     }
@@ -487,7 +488,11 @@ impl<'a> Channel<'a> {
                     0x4 => {
                         /* E4y: Set vibrato control */
                         // TODO: more abstraction to be done one day here!
-                        self.vibrato.data.waveform = self.current.effect_parameter & 3;
+                        self.vibrato.data.waveform = match self.current.effect_parameter & 3 {
+                            0 => Waveform::Sine,
+                            1 => Waveform::RampDown,
+                            _ => Waveform::Square
+                        };
                         if ((self.current.effect_parameter >> 2) & 1) == 0 {
                             self.vibrato.retrigger();
                         }
@@ -507,7 +512,11 @@ impl<'a> Channel<'a> {
                     }
                     0x7 => {
                         /* E7y: Set tremolo control */
-                        self.tremolo.data.waveform = self.current.effect_parameter & 3;
+                        self.tremolo.data.waveform = match self.current.effect_parameter & 3 {
+                            0 => Waveform::Sine,
+                            1 => Waveform::RampDown,
+                            _ => Waveform::Square
+                        };
                         if ((self.current.effect_parameter >> 2) & 1) == 0 {
                             self.tremolo.retrigger();
                         }
@@ -549,7 +558,7 @@ impl<'a> Channel<'a> {
                                         | TRIGGER_KEEP_PERIOD,
                                 );
                             } else if self.current.note.is_keyoff() {
-                                if self.current.instrument == 0 {
+                                if self.current.instrument.is_none() {
                                     self.key_off(0);
                                 } else {
                                     self.trigger_pitch(TRIGGER_KEEP_PERIOD | TRIGGER_KEEP_ENVELOPE);
@@ -680,7 +689,7 @@ impl<'a> Channel<'a> {
 
     /// Change instr and return true if it was the same
     fn tick0_change_instr(&mut self, sample_only: bool) -> bool {
-        let instrnr = self.current.instrument as usize - 1;
+        let instrnr = self.current.instrument.unwrap();
 
         if let InstrumentType::Default(id) = &self.module.instrument[instrnr].instr_type {
             let was_same = self.instr.as_ref().map_or(false, |i| i.num == instrnr);
@@ -710,15 +719,16 @@ impl<'a> Channel<'a> {
 
     /// Return true if it was the same instrument
     fn tick0_load_instrument(&mut self) -> bool {
-        if self.current.instrument == 0 {
-            return true; // No instrument to load
-        }
-
-        if self.current.instrument as usize > self.module.instrument.len() {
-            /* Invalid instrument, cut current note */
-            self.cut_pitch();
-            self.instr = None;
-            return false;
+        if let Some(instr) = self.current.instrument {
+            if instr > self.module.instrument.len() {
+                // Invalid instrument, cut current note
+                self.cut_pitch();
+                self.instr = None;
+                return false;
+            }
+        } else {
+            // No instrument to load
+            return true;
         }
 
         if self.current.has_tone_portamento() {
@@ -750,7 +760,7 @@ impl<'a> Channel<'a> {
         // Note is note valid? Return early.
         if !self.current.note.is_valid() {
             if self.current.note.is_keyoff() {
-                if self.current.instrument == 0 || new_instr {
+                if self.current.instrument.is_none() || new_instr {
                     self.key_off(0);
                 } else {
                     self.trigger_pitch(TRIGGER_KEEP_PERIOD | TRIGGER_KEEP_ENVELOPE);
@@ -779,7 +789,7 @@ impl<'a> Channel<'a> {
                     self.note = self.current.note.value() as f32 + s.get_finetuned_pitch();
                 }
 
-                let trigger_flag = if self.current.instrument > 0 {
+                let trigger_flag = if self.current.instrument.is_some() {
                     TRIGGER_KEEP_NONE
                 } else {
                     /* Ghost note: keep old volume */

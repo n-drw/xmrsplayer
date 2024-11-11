@@ -3,15 +3,15 @@ use console::{Key, Term};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::{Arc, Mutex};
 
-use xmrs::amiga::amiga_module::AmigaModule;
+use xmrs::import::amiga::amiga_module::AmigaModule;
 use xmrs::prelude::*;
-use xmrs::s3m::s3m_module::S3mModule;
-use xmrs::xm::xmmodule::XmModule;
+use xmrs::import::s3m::s3m_module::S3mModule;
+use xmrs::import::xm::xmmodule::XmModule;
 
 use xmrsplayer::prelude::*;
 
 #[cfg(feature = "sid")]
-use xmrs::sid::sid_module::SidModule;
+use xmrs::import::sid::sid_module::SidModule;
 
 #[derive(Parser)]
 struct Cli {

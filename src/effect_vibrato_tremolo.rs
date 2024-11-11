@@ -9,9 +9,11 @@ use num_traits::float::Float;
 
 use crate::effect::*;
 
+use xmrs::waveform::Waveform;
+
 #[derive(Default, Clone, Copy, Debug)]
 pub struct VibratoTremolo {
-    pub waveform: u8,
+    pub waveform: Waveform,
     speed: f32,
     depth: f32,
 }
@@ -19,28 +21,7 @@ pub struct VibratoTremolo {
 impl VibratoTremolo {
     // return depth * (-1..1)
     fn waveform(&self, pos: f32) -> f32 {
-        let value = self.depth
-            * match self.waveform {
-                0 => -(core::f32::consts::TAU * pos).sin(),
-                1 => {
-                    // Ramp down
-                    if pos < 0.5 {
-                        -2.0 * pos
-                    } else {
-                        -2.0 * pos + 2.0
-                    }
-                }
-                _ => {
-                    // square
-                    if pos < 0.5 {
-                        -1.0
-                    } else {
-                        1.0
-                    }
-                }
-            };
-
-        value
+        self.depth * self.waveform.value(pos)
     }
 }
 

@@ -1,6 +1,5 @@
 use crate::effect::*;
 use crate::helper::*;
-use crate::historical_helper::HistoricalHelper;
 use core::default::Default;
 
 #[cfg(feature = "micromath")]
@@ -12,46 +11,56 @@ use num_traits::float::Float;
 
 #[derive(Clone, Default)]
 pub struct MultiRetrigNote {
-    note_retrig_speed: f32,
-    note_retrig_vol: f32,
+    speed: f32,
+    vol_change: u8,
 }
 
 impl MultiRetrigNote {
-    fn value_new_computers(&self, vol: f32) -> f32 {
-        vol * if self.note_retrig_vol <= 0.5 {
-            core::f32::consts::FRAC_PI_2
-                + self.note_retrig_vol * (f32::asin(0.5) - core::f32::consts::FRAC_PI_2)
-        } else {
-            core::f32::consts::PI * (1.0 + self.note_retrig_vol)
-        }
+    fn value(&self, vol: f32) -> f32 {
+        return match self.vol_change {
+            0x1 => vol - 1.0/64.0,
+            0x2 => vol - 2.0/64.0,
+            0x3 => vol - 4.0/64.0,
+            0x4 => vol - 8.0/64.0,
+            0x5 => vol - 16.0/64.0,
+            0x6 => vol * (2.0/3.0)/64.0,
+            0x7 => vol * (1.0/2.0)/64.0,
+            0x8 => vol,   // does not change the volume
+            0x9 => vol + 1.0/64.0,
+            0xA => vol + 2.0/64.0,
+            0xB => vol + 4.0/64.0,
+            0xC => vol + 8.0/64.0,
+            0xD => vol + 16.0/64.0,
+            0xE => vol * (3.0/2.0)/64.0,
+            0xF => vol * (2.0/1.0)/64.0,
+            _ => vol,
+        };
     }
 }
 
 #[derive(Clone, Default)]
 pub struct EffectMultiRetrigNote {
     data: MultiRetrigNote,
-    historical: Option<HistoricalHelper>,
     tick: f32,
 }
 
 impl EffectMultiRetrigNote {
-    pub fn new(historical: Option<HistoricalHelper>, speed: f32, vol: f32) -> Self {
+    pub fn new(speed: f32, vol_change: u8) -> Self {
         Self {
             data: MultiRetrigNote {
-                note_retrig_speed: speed,
-                note_retrig_vol: vol,
+                speed,
+                vol_change,
             },
-            historical: historical,
-            ..Default::default()
+            tick: 0.0,
         }
     }
 }
 
 impl EffectPlugin for EffectMultiRetrigNote {
-    fn tick0(&mut self, note_retrig_speed: f32, note_retrig_vol: f32) -> f32 {
-        self.data.note_retrig_speed = note_retrig_speed;
-        if note_retrig_vol != 0.0 {
-            self.data.note_retrig_vol = note_retrig_vol;
+    fn tick0(&mut self, speed: f32, vol_change: f32) -> f32 {
+        self.data.speed = speed;
+        if vol_change != 0.0 {
+            self.data.vol_change = vol_change as u8;
         }
         self.tick = 1.0;
         self.value()
@@ -59,12 +68,12 @@ impl EffectPlugin for EffectMultiRetrigNote {
 
     fn tick(&mut self) -> f32 {
         self.tick += 1.0;
-        self.tick %= self.data.note_retrig_speed;
+        self.tick %= self.data.speed;
         self.tick
     }
 
     fn in_progress(&self) -> bool {
-        self.data.note_retrig_speed != 0.0
+        self.data.speed != 0.0
     }
 
     fn retrigger(&mut self) -> f32 {
@@ -73,15 +82,10 @@ impl EffectPlugin for EffectMultiRetrigNote {
     }
 
     fn clamp(&self, vol: f32) -> f32 {
-        if self.tick as f32 >= self.data.note_retrig_speed {
+        if self.tick as f32 >= self.data.speed {
             vol
         } else {
-            let mut v = match &self.historical {
-                Some(_hhelper) => {
-                    HistoricalHelper::value_historical_computers(vol, self.data.note_retrig_vol)
-                }
-                None => self.data.value_new_computers(vol),
-            };
+            let mut v = self.data.value(vol);
             clamp(&mut v);
             v
         }
@@ -94,20 +98,20 @@ impl EffectPlugin for EffectMultiRetrigNote {
 
 impl EffectXM2EffectPlugin for EffectMultiRetrigNote {
     fn xm_convert(param: u8, _special: u8) -> Option<(Option<f32>, Option<f32>)> {
-        let note_retrig_speed = if param & 0x0F == 0 {
+        let speed = if param & 0x0F == 0 {
             None
         } else {
             Some((param & 0x0F) as f32)
         };
 
-        let note_retrig_vol = if param >> 4 == 0 {
+        let vol = if param >> 4 == 0 {
             None
         } else {
             Some((param >> 4) as f32 / 16.0)
         };
 
-        if note_retrig_speed != None || note_retrig_vol != None {
-            Some((note_retrig_speed, note_retrig_vol))
+        if speed != None || vol != None {
+            Some((speed, vol))
         } else {
             None
         }
@@ -117,10 +121,10 @@ impl EffectXM2EffectPlugin for EffectMultiRetrigNote {
         match EffectMultiRetrigNote::xm_convert(param, 0) {
             Some(elem) => {
                 if let Some(speed) = elem.0 {
-                    self.data.note_retrig_speed = speed;
+                    self.data.speed = speed;
                 }
-                if let Some(vol) = elem.1 {
-                    self.data.note_retrig_vol = vol;
+                if let Some(vol_change) = elem.1 {
+                    self.data.vol_change = (16.0 * vol_change) as u8;
                 }
             }
             None => {}
