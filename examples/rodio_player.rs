@@ -3,10 +3,10 @@ use console::{Key, Term};
 use rodio::Sink;
 use std::sync::{Arc, Mutex};
 
-use xmrs::amiga::amiga_module::AmigaModule;
+use xmrs::import::amiga::amiga_module::AmigaModule;
 use xmrs::prelude::*;
-use xmrs::s3m::s3m_module::S3mModule;
-use xmrs::xm::xmmodule::XmModule;
+use xmrs::import::s3m::s3m_module::S3mModule;
+use xmrs::import::xm::xmmodule::XmModule;
 
 mod bufferedsource;
 use bufferedsource::BufferedSource;

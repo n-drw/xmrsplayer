@@ -18,7 +18,7 @@ use crate::triggerkeep::*;
 use crate::helper::*;
 use crate::state_instr_default::StateInstrDefault;
 use xmrs::prelude::*;
-use xmrs::patternslot::PatternSlot;
+use xmrs::import::patternslot::PatternSlot;
 
 #[derive(Clone)]
 pub struct Channel<'a> {
