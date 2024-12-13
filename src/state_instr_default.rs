@@ -60,7 +60,7 @@ impl<'a> StateInstrDefault<'a> {
     ) -> Self {
         let v = &instr.vibrato;
         let ve = &instr.volume_envelope;
-        let pe = &instr.panning_envelope;
+        let pe = &instr.pan_envelope;
         Self {
             instr,
             num,
@@ -147,7 +147,7 @@ impl<'a> StateInstrDefault<'a> {
             self.envelope_volume.tick(self.sustained);
         }
         // Panning
-        if self.instr.panning_envelope.enabled {
+        if self.instr.pan_envelope.enabled {
             self.envelope_panning.tick(self.sustained);
         }
     }
@@ -178,28 +178,28 @@ impl<'a> StateInstrDefault<'a> {
 
     pub fn set_pitch(&mut self, note: Pitch) -> bool {
         if note.is_valid() {
-            let num = self.instr.sample_for_pitch[note.value() as usize] as usize;
-            return self.select_sample(num);
-        } else {
-            return false;
+            if let Some(num) = self.instr.sample_for_pitch[note.value() as usize] {
+                return self.select_sample(num);
+            }
         }
+        return false;
     }
 
     fn select_sample(&mut self, num: usize) -> bool {
         if num < self.instr.sample.len() {
-            let sample = &self.instr.sample[num];
-            let state_sample = StateSample::new(sample, self.rate);
-            self.panning = state_sample.get_panning();
-            self.volume = state_sample.get_volume();
-            self.volume_orig = self.volume;
-            self.state_sample = Some(state_sample);
-            return true;
-        } else {
-            self.state_sample = None;
-            self.panning = 0.5;
-            self.volume = 0.0;
-            return false;
+            if let Some(sample) = &self.instr.sample[num] {
+                let state_sample = StateSample::new(sample, self.rate);
+                self.panning = state_sample.get_panning();
+                self.volume = state_sample.get_volume();
+                self.volume_orig = self.volume;
+                self.state_sample = Some(state_sample);
+                return true;
+            }
         }
+        self.state_sample = None;
+        self.panning = 0.5;
+        self.volume = 0.0;
+        return false;
     }
 
     pub fn tick(&mut self) {

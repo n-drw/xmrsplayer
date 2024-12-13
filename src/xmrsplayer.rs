@@ -7,6 +7,7 @@ use xmrs::prelude::*;
 
 pub struct XmrsPlayer<'a> {
     pub module: &'a Module,
+    pub current_song: usize,
     sample_rate: f32,
 
     tempo: u16,
@@ -48,15 +49,23 @@ pub struct XmrsPlayer<'a> {
 }
 
 impl<'a> XmrsPlayer<'a> {
-    pub fn new(module: &'a Module, sample_rate: f32, historical: bool) -> Self {
+    pub fn new(module: &'a Module, sample_rate: f32, song: usize, historical: bool) -> Self {
         let num_channels = module.get_num_channels();
         let hhelper = if historical {
             Some(HistoricalHelper::new(module.default_tempo))
         } else {
             None
         };
+
+        let current_song = if song < module.pattern_order.len() {
+            song
+        } else {
+            0
+        };
+
         let mut player = Self {
             module,
+            current_song,
             sample_rate,
             tempo: module.default_tempo,
             bpm: module.default_bpm,
@@ -130,7 +139,7 @@ impl<'a> XmrsPlayer<'a> {
     /// if speed == 0, resets to default speed
     pub fn goto(&mut self, table_position: usize, row: usize, speed: u16) -> bool {
         if table_position < self.module.get_song_length() {
-            let num_row = self.module.pattern_order[table_position];
+            let num_row = self.module.pattern_order[self.current_song][table_position];
             if row < self.module.get_num_rows(num_row) {
                 // Create a position jump
                 self.jump_dest = table_position;
@@ -167,7 +176,7 @@ impl<'a> XmrsPlayer<'a> {
 
     /// Returns current pattern number in pattern_order
     pub fn get_current_pattern(&self) -> usize {
-        self.module.pattern_order[self.current_table_index]
+        self.module.pattern_order[self.current_song][self.current_table_index]
     }
 
     /// Returns current index in pattern_order
@@ -302,13 +311,13 @@ impl<'a> XmrsPlayer<'a> {
             self.post_pattern_change();
         }
 
-        let pat_idx_temp = self.module.pattern_order[self.current_table_index];
+        let pat_idx_temp = self.module.pattern_order[self.current_song][self.current_table_index];
         let pat_idx = if pat_idx_temp < self.module.pattern.len() {
             pat_idx_temp
         } else {
             // empty pattern, returning to zero
             self.current_table_index = 0;
-            self.module.pattern_order[self.current_table_index]
+            self.module.pattern_order[self.current_song][self.current_table_index]
         };
 
         let num_channels = self.module.get_num_channels();

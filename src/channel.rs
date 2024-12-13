@@ -18,7 +18,6 @@ use crate::triggerkeep::*;
 use crate::helper::*;
 use crate::state_instr_default::StateInstrDefault;
 use xmrs::prelude::*;
-use xmrs::import::patternslot::PatternSlot;
 
 #[derive(Clone)]
 pub struct Channel<'a> {
@@ -29,7 +28,7 @@ pub struct Channel<'a> {
 
     note: f32,
 
-    pub current: PatternSlot,
+    pub current: TrackUnit,
 
     period: f32,
 
@@ -89,7 +88,7 @@ impl<'a> Channel<'a> {
             tremolo: EffectVibratoTremolo::tremolo(),
             multi_retrig_pitch: EffectMultiRetrigNote::new(0.0, 0),
             note: 0.0,
-            current: PatternSlot::default(),
+            current: TrackUnit::default(),
             period: 0.0,
             instr: None,
             panning_slide: EffectVolumePanningSlide::default(),
@@ -817,7 +816,7 @@ impl<'a> Channel<'a> {
         self.tick0_load_pitch(new_instr);
     }
 
-    pub(crate) fn tick0(&mut self, pattern_slot: &PatternSlot) {
+    pub(crate) fn tick0(&mut self, pattern_slot: &TrackUnit) {
         self.current = pattern_slot.clone();
 
         if !self.current.has_delay()

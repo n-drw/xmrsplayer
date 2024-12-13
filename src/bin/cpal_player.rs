@@ -19,6 +19,10 @@ struct Cli {
     #[arg(short = 'f', long, required = true, value_name = "filename")]
     filename: Option<String>,
 
+    /// song number (default: 0)
+    #[arg(short = 's', long, default_value = "0")]
+    song: usize,
+
     /// Choose output wave file
     #[arg(short = 'o', long, value_name = "output filename")]
     output: Option<String>,
@@ -111,88 +115,28 @@ fn main() -> Result<(), std::io::Error> {
         Some(filename) => {
             println!("opening {}", filename);
             let contents = std::fs::read(filename.trim())?;
-            match filename.split('.').last() {
-                Some(extension) if extension == "xm" || extension == "XM" => {
-                    match XmModule::load(&contents) {
-                        Ok(xm) => {
-                            drop(contents); // cleanup memory
-                            let module = xm.to_module();
-                            drop(xm);
-                            println!("Playing {} !", module.name);
+            match Module::load(&contents) {
+                Ok(module) => {
+                    drop(contents); // cleanup memory
+                    println!("Playing {} !", module.name);
 
-                            let module = Box::new(module);
-                            let module_ref: &'static Module = Box::leak(module);
-                            play_music(
-                                module_ref,
-                                cli.amplification,
-                                cli.position,
-                                cli.loops,
-                                cli.debug,
-                                cli.ch,
-                                cli.speed,
-                                cli.historical,
-                                cli.output.clone(),
-                            );
-                        }
-                        Err(e) => {
-                            println!("{:?}", e);
-                        }
-                    }
+                    let module = Box::new(module);
+                    let module_ref: &'static Module = Box::leak(module);
+                    play_music(
+                        module_ref,
+                        cli.song,
+                        cli.amplification,
+                        cli.position,
+                        cli.loops,
+                        cli.debug,
+                        cli.ch,
+                        cli.speed,
+                        cli.historical,
+                        cli.output.clone(),
+                    );
                 }
-                Some(extension) if extension == "mod" || extension == "MOD" => {
-                    match AmigaModule::load(&contents) {
-                        Ok(amiga) => {
-                            drop(contents); // cleanup memory
-                            let module = amiga.to_module();
-                            drop(amiga);
-                            println!("Playing {} !", module.name);
-                            let module = Box::new(module);
-                            let module_ref: &'static Module = Box::leak(module);
-                            play_music(
-                                module_ref,
-                                cli.amplification,
-                                cli.position,
-                                cli.loops,
-                                cli.debug,
-                                cli.ch,
-                                cli.speed,
-                                false,
-                                cli.output.clone(),
-                            );
-                        }
-                        Err(e) => {
-                            println!("{:?}", e);
-                        }
-                    }
-                }
-                Some(extension) if extension == "s3m" || extension == "S3M" => {
-                    match S3mModule::load(&contents) {
-                        Ok(s3m) => {
-                            drop(contents); // cleanup memory
-                            let module = s3m.to_module();
-                            drop(s3m);
-                            println!("Playing {} !", module.name);
-                            let module = Box::new(module);
-                            let module_ref: &'static Module = Box::leak(module);
-                            play_music(
-                                module_ref,
-                                cli.amplification,
-                                cli.position,
-                                cli.loops,
-                                cli.debug,
-                                cli.ch,
-                                cli.speed,
-                                false,
-                                cli.output.clone(),
-                            );
-                        }
-                        Err(e) => {
-                            println!("{:?}", e);
-                        }
-                    }
-                }
-                Some(_) | None => {
-                    println!("File unknown?");
+                Err(e) => {
+                    println!("{:?}", e);
                 }
             }
         }
@@ -203,6 +147,7 @@ fn main() -> Result<(), std::io::Error> {
 
 fn play_music(
     module: &'static Module,
+    song: usize,
     amplification: f32,
     position: usize,
     loops: usize,
@@ -221,6 +166,7 @@ fn play_music(
         .default_output_config()
         .expect("failed to get default output config");
     let sample_rate = config.sample_rate();
+
     // try to detect FT2 to play historical bugs
     let is_ft2 = historical
         || module.comment == "FastTracker v2.00 (1.02)"
@@ -230,6 +176,7 @@ fn play_music(
     let player = Arc::new(Mutex::new(XmrsPlayer::new(
         module,
         sample_rate.0 as f32,
+        song,
         is_ft2,
     )));
 
