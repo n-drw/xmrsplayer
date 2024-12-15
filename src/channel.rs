@@ -37,6 +37,7 @@ pub struct Channel<'a> {
 
     period: f32,
 
+    channel_volume: f32,
     volume: f32,  /* Ideally between 0 (muted) and 1 (loudest) */
     panning: f32, /* Between 0 (left) and 1 (right); 0.5 is centered */
 
@@ -74,6 +75,7 @@ impl<'a> Channel<'a> {
             historical: historical,
             period_helper: period_helper.clone(),
             rate,
+            channel_volume: 1.0,
             volume: 1.0,
             panning: 0.5,
             note: 0.0,
@@ -198,6 +200,7 @@ impl<'a> Channel<'a> {
                     volume = self.volume + self.effect_tremolo.value();
                     volume = volume.clamp(0.0, 1.0);
                     volume *= instr.get_volume();
+                    volume *= self.channel_volume;
                 }
 
                 self.actual_volume[0] = volume * panning.sqrt();
@@ -247,13 +250,14 @@ impl<'a> Channel<'a> {
                         }
                     }
                 }
-                TrackEffect::ChannelVolume(_v) => {
-                    todo!();
+                TrackEffect::ChannelVolume(v) => {
+                    self.channel_volume = v.clamp(0.0, 1.0);
                 }
                 TrackEffect::ChannelVolumeSlide {
                     speed: _s,
                     fine: _f,
                 } => {
+                    println!("ChannelVolumeSlide");
                     todo!();
                 }
                 TrackEffect::Glissando(glissando) => {
@@ -272,7 +276,8 @@ impl<'a> Channel<'a> {
                     }
                 }
                 TrackEffect::InstrumentNewNoteAction(_nna) => {
-                    todo!()
+                    println!("InstrumentNewNoteAction");
+                    todo!();
                 }
                 TrackEffect::InstrumentPanningEnvelopePosition(position) => {
                     if current_tick == 0 {
@@ -289,6 +294,7 @@ impl<'a> Channel<'a> {
                     }
                 }
                 TrackEffect::InstrumentPitchEnvelope(_pe) => {
+                    println!("InstrumentPitchEnvelope");
                     todo!()
                 }
                 TrackEffect::InstrumentSampleOffset(seek) => {
@@ -303,6 +309,7 @@ impl<'a> Channel<'a> {
                     }
                 }
                 TrackEffect::InstrumentSurround(_s) => {
+                    println!("InstrumentSurround");
                     todo!()
                 }
                 TrackEffect::InstrumentVolumeEnvelopePosition(position) => {
@@ -357,7 +364,8 @@ impl<'a> Channel<'a> {
                     }
                 }
                 TrackEffect::NoteFadeOut { tick: _t, past: _p } => {
-                    todo!()
+                    println!("NoteFadeOut");
+                    todo!();
                 }
                 TrackEffect::NoteOff { tick: t, past: _p } => {
                     // TODO: past
