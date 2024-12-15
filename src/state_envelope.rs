@@ -6,6 +6,7 @@ use xmrs::prelude::*;
 pub struct StateEnvelope<'a> {
     env: &'a Envelope,
     default_value: f32,
+    pub enabled: bool,
     pub value: f32,
     pub counter: usize,
 }
@@ -16,16 +17,18 @@ impl<'a> StateEnvelope<'a> {
         Self {
             env,
             default_value,
+            enabled: true,
             value: default_value,
             counter: 0,
         }
     }
 
     pub fn has_volume_envelope(&self) -> bool {
-        self.env.enabled
+        self.env.enabled || self.enabled
     }
 
     pub fn reset(&mut self) {
+        self.enabled = true;
         self.value = self.default_value;
         self.counter = 0;
     }
@@ -73,10 +76,7 @@ impl<'a> StateEnvelope<'a> {
         }
 
         /* Make sure it is safe to increment frame count */
-        if !sustained
-            || !self.env.sustain_enabled
-            || self.counter != self.env.point[self.env.sustain_point as usize].frame
-        {
+        if !sustained || !self.env.sustain_enabled || !self.env.in_sustain_point(self.counter) {
             self.counter += 1;
         }
     }

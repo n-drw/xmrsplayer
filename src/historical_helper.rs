@@ -9,21 +9,21 @@ use num_traits::float::Float;
 
 #[derive(Default, Clone, Copy)]
 pub struct HistoricalHelper {
-    pub tempo: u16,
+    pub tempo: usize,
 }
 
 impl HistoricalHelper {
-    pub fn new(tempo: u16) -> Self {
+    pub fn new(tempo: usize) -> Self {
         Self { tempo }
     }
 
-    pub fn set_tempo(&mut self, tempo: u16) {
+    pub fn set_tempo(&mut self, tempo: usize) {
         self.tempo = tempo;
     }
 
     /// Arpeggio
     pub fn arpeggio_tick(&self, tick: u8) -> u8 {
-        let tick = tick as u16 % self.tempo;
+        let tick = tick as usize % self.tempo;
         let reverse_tick = (self.tempo - tick - 1) as u8;
         match reverse_tick {
             0..=15 => reverse_tick % 3,

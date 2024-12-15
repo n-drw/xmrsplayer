@@ -1,5 +1,4 @@
 use crate::channel::Channel;
-use crate::helper::*;
 use crate::historical_helper::HistoricalHelper;
 use crate::triggerkeep::*;
 use alloc::{vec, vec::Vec};
@@ -10,16 +9,17 @@ pub struct XmrsPlayer<'a> {
     pub current_song: usize,
     sample_rate: f32,
 
-    tempo: u16,
-    bpm: u16,
+    tempo: usize,
+    bpm: usize,
     /// Global volume: 0.0 to 1.0
     pub global_volume: f32,
-    global_volume_slide_param: u8,
+    effect_volume_slide_speed: f32,
+    effect_volume_slide_fine: bool,
     /// Global amplification (default 1.0)
     pub amplification: f32,
     current_table_index: usize,
     current_row: usize,
-    current_tick: u16,
+    current_tick: usize,
     /// sample rate / (BPM * 0.4)
     remaining_samples_in_tick: f32,
     /// +1 for a (left,right) sample
@@ -31,7 +31,7 @@ pub struct XmrsPlayer<'a> {
     jump_row: usize,
 
     /// Extra ticks to be played before going to the next row - Used for EEy effect
-    extra_ticks: u16,
+    extra_ticks: usize,
 
     pub channel: Vec<Channel<'a>>,
 
@@ -71,9 +71,10 @@ impl<'a> XmrsPlayer<'a> {
             bpm: module.default_bpm,
             global_volume: 1.0,
             amplification: 1.0,
-            row_loop_count: vec![vec![0; MAX_NUM_ROWS]; module.get_song_length()],
+            row_loop_count: vec![vec![0; MAX_NUM_ROWS]; module.get_song_length(song)],
             hhelper: hhelper.clone(),
-            global_volume_slide_param: 0,
+            effect_volume_slide_speed: 0.0,
+            effect_volume_slide_fine: true,
             current_table_index: 0,
             current_row: 0,
             current_tick: 0,
@@ -137,8 +138,8 @@ impl<'a> XmrsPlayer<'a> {
 
     /// Jump to row at index table_position in pattern_order at speed
     /// if speed == 0, resets to default speed
-    pub fn goto(&mut self, table_position: usize, row: usize, speed: u16) -> bool {
-        if table_position < self.module.get_song_length() {
+    pub fn goto(&mut self, table_position: usize, row: usize, speed: usize) -> bool {
+        if table_position < self.module.get_song_length(self.current_song) {
             let num_row = self.module.pattern_order[self.current_song][table_position];
             if row < self.module.get_num_rows(num_row) {
                 // Create a position jump
@@ -196,7 +197,7 @@ impl<'a> XmrsPlayer<'a> {
 
     fn post_pattern_change(&mut self) {
         /* Loop if necessary */
-        if self.current_table_index >= self.module.pattern_order.len() {
+        if self.current_table_index >= self.module.pattern_order[self.current_song].len() {
             self.current_table_index = self.module.restart_position;
         }
 
@@ -204,7 +205,8 @@ impl<'a> XmrsPlayer<'a> {
         if self.debug {
             println!(
                 "pattern_order[0x{:03x}] = 0x{:03x}",
-                self.current_table_index, self.module.pattern_order[self.current_table_index]
+                self.current_table_index,
+                self.module.pattern_order[self.current_song][self.current_table_index]
             );
         }
     }
@@ -213,85 +215,64 @@ impl<'a> XmrsPlayer<'a> {
         let ch = &mut self.channel[ch_index];
         let pattern_slot = &ch.current;
 
-        match pattern_slot.effect_type {
-            0xB => {
-                /* Bxx: Position jump */
-                let mut param = pattern_slot.effect_parameter as usize;
-                if param == 0 {
-                    param += 1;
+        for gfx in pattern_slot.global_effects.clone() {
+            match gfx {
+                GlobalEffect::Bpm(bpm) => {
+                    self.bpm = bpm;
                 }
-                param -= 1;
-                if param < self.module.pattern_order.len() {
-                    self.position_jump = true;
-                    self.jump_dest = param;
-                    self.jump_row = 0;
+                GlobalEffect::BpmSlide(_value) => {
+                    todo!();
                 }
-            }
-            0xD => {
-                /* Dxx: Pattern break */
-                /* Jump after playing this line */
-                self.pattern_break = true;
-                self.jump_row = (pattern_slot.effect_parameter >> 4) as usize * 10
-                    + (pattern_slot.effect_parameter & 0x0F) as usize;
-            }
-            0xE => {
-                /* EXy: Extended command */
-                match pattern_slot.effect_parameter >> 4 {
-                    0x6 => {
-                        /* E6y: Pattern loop */
-                        if pattern_slot.effect_parameter & 0x0F != 0 {
-                            if (pattern_slot.effect_parameter & 0x0F) as usize
-                                == ch.pattern_loop_count
-                            {
-                                /* Loop is over */
-                                ch.pattern_loop_count = 0;
-                            } else {
-                                /* Jump to the beginning of the loop */
-                                ch.pattern_loop_count += 1;
-                                self.position_jump = true;
-                                self.jump_row = ch.pattern_loop_origin;
-                                self.jump_dest = self.current_table_index;
-                            }
+                GlobalEffect::MidiMacro(_m) => {
+                    todo!();
+                }
+                GlobalEffect::PatternBreak(position) => {
+                    self.pattern_break = true;
+                    self.jump_row = position;
+                }
+                GlobalEffect::PatternDelay {
+                    quantity: q,
+                    tempo: t,
+                } => self.extra_ticks = if t { q * self.tempo } else { q },
+                GlobalEffect::PatternLoop(value) => {
+                    if value != 0 {
+                        if value == ch.pattern_loop_count {
+                            // Loop is over
+                            ch.pattern_loop_count = 0;
                         } else {
-                            /* Set loop start point */
-                            ch.pattern_loop_origin = self.current_row;
-                            if self.hhelper.is_some() {
-                                // Replicate FT2 E60 bug
-                                self.jump_row = ch.pattern_loop_origin;
-                            }
+                            // Jump to the beginning of the loop
+                            ch.pattern_loop_count += 1;
+                            self.position_jump = true;
+                            self.jump_row = ch.pattern_loop_origin;
+                            self.jump_dest = self.current_table_index;
+                        }
+                    } else {
+                        // Set loop start point
+                        ch.pattern_loop_origin = self.current_row;
+                        if self.hhelper.is_some() {
+                            // Replicate FT2 E60 bug
+                            self.jump_row = ch.pattern_loop_origin;
                         }
                     }
-                    0xE => {
-                        /* EEy: Pattern delay */
-                        self.extra_ticks =
-                            (pattern_slot.effect_parameter & 0x0F) as u16 * self.tempo;
+                }
+                GlobalEffect::PositionJump(position) => {
+                    if position < self.module.pattern_order[self.current_song].len() {
+                        self.position_jump = true;
+                        self.jump_dest = position;
+                        self.jump_row = 0;
                     }
-                    _ => {}
+                }
+                GlobalEffect::Speed(speed) => {
+                    self.tempo = speed;
+                }
+                GlobalEffect::Volume(volume) => {
+                    self.global_volume = volume.clamp(0.0, 1.0);
+                }
+                GlobalEffect::VolumeSlide { speed: s, fine: f } => {
+                    self.effect_volume_slide_speed = s;
+                    self.effect_volume_slide_fine = f;
                 }
             }
-            0xF => {
-                /* Fxx: Set tempo/BPM */
-                if pattern_slot.effect_parameter < 32 {
-                    self.tempo = pattern_slot.effect_parameter as u16;
-                } else {
-                    self.bpm = pattern_slot.effect_parameter as u16;
-                }
-            }
-            0x10 => {
-                /* Gxx: Set global volume */
-                self.global_volume = if pattern_slot.effect_parameter > 64 {
-                    1.0
-                } else {
-                    pattern_slot.effect_parameter as f32 / 64.0
-                };
-            }
-            0x11 => {
-                /* Hxy: Global volume slide */
-                if pattern_slot.effect_parameter > 0 {
-                    self.global_volume_slide_param = pattern_slot.effect_parameter;
-                }
-            }
-            _ => {}
         }
     }
 
@@ -332,7 +313,7 @@ impl<'a> XmrsPlayer<'a> {
             let ps = &self.module.pattern[pat_idx][current_row][ch_index];
             #[cfg(feature = "std")]
             if self.debug {
-                print!("{:?}", ps);
+                print!("{:?} ", ps.note);
             }
             self.channel[ch_index].tick0(ps);
             self.tick0_global_effects(ch_index);
@@ -375,20 +356,11 @@ impl<'a> XmrsPlayer<'a> {
             ch.tick(self.current_tick);
 
             // Specific effect to slide global volume
-            if ch.current.effect_type == 0x11 && self.current_tick != 0 {
+            if ch.current.has_global_volume_slide() && self.current_tick != 0 {
                 /* Hxy: Global volume slide */
-                let slide_amount = match (
-                    self.global_volume_slide_param & 0xF0 != 0,
-                    self.global_volume_slide_param & 0x0F != 0,
-                ) {
-                    (true, false) => (self.global_volume_slide_param >> 4) as f32 / 64.0, // Global slide up
-                    (false, true) => -((self.global_volume_slide_param & 0x0F) as f32 / 64.0), // Global slide down
-                    _ => 0.0, // Illegal state or empty values
-                };
-                self.global_volume += slide_amount;
+                self.global_volume =
+                    (self.global_volume + self.effect_volume_slide_speed).clamp(0.0, 1.0);
             }
-
-            clamp(&mut self.global_volume);
         }
     }
 

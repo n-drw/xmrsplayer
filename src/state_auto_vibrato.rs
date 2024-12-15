@@ -1,19 +1,22 @@
-/// An Instrument Vibrato State
-use xmrs::instr_vibrato::InstrVibrato;
 use xmrs::period_helper::{FrequencyType, PeriodHelper};
+/// An Instrument Vibrato State
+use xmrs::vibrato::Vibrato;
+use xmrs::waveform::WaveformState;
 
 #[derive(Clone)]
 pub struct StateAutoVibrato<'a> {
-    vibrato: &'a InstrVibrato,
+    vibrato: &'a Vibrato,
+    wfs: WaveformState,
     period_helper: PeriodHelper,
     phase: f32,
     pub current_modulation: f32,
 }
 
 impl<'a> StateAutoVibrato<'a> {
-    pub fn new(vibrato: &'a InstrVibrato, period_helper: PeriodHelper) -> Self {
+    pub fn new(vibrato: &'a Vibrato, period_helper: PeriodHelper) -> Self {
         let mut sv = Self {
             vibrato,
+            wfs: WaveformState::new(vibrato.waveform),
             period_helper,
             phase: 0.0,
             current_modulation: 0.0,
@@ -43,7 +46,7 @@ impl<'a> StateAutoVibrato<'a> {
             self.vibrato.depth
         };
 
-        self.current_modulation = current_depth * self.vibrato.waveform.value(self.phase);
+        self.current_modulation = current_depth * self.wfs.value(self.phase);
 
         if let FrequencyType::AmigaFrequencies = self.period_helper.freq_type {
             self.current_modulation /= 4.0;

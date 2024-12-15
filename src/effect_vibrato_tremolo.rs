@@ -1,5 +1,3 @@
-use xmrs::period_helper::{FrequencyType, PeriodHelper};
-
 #[cfg(feature = "micromath")]
 #[allow(unused_imports)]
 use micromath::F32Ext;
@@ -9,18 +7,18 @@ use num_traits::float::Float;
 
 use crate::effect::*;
 
-use xmrs::waveform::Waveform;
+use xmrs::waveform::WaveformState;
 
 #[derive(Default, Clone, Copy, Debug)]
 pub struct VibratoTremolo {
-    pub waveform: Waveform,
-    speed: f32,
-    depth: f32,
+    pub waveform: WaveformState,
+    pub speed: f32,
+    pub depth: f32,
 }
 
 impl VibratoTremolo {
     // return depth * (-1..1)
-    fn waveform(&self, pos: f32) -> f32 {
+    fn waveform(&mut self, pos: f32) -> f32 {
         self.depth * self.waveform.value(pos)
     }
 }
@@ -28,40 +26,16 @@ impl VibratoTremolo {
 #[derive(Default, Clone, Copy, Debug)]
 pub struct EffectVibratoTremolo {
     pub data: VibratoTremolo,
-    multiplier: f32,
     in_progress: bool,
     pos: f32,
     value: f32,
 }
 
-impl EffectVibratoTremolo {
-    fn new(data: VibratoTremolo, multiplier: f32) -> Self {
-        Self {
-            data,
-            multiplier,
-            in_progress: false,
-            pos: 0.0,
-            value: 0.0,
-        }
-    }
-
-    pub fn tremolo() -> Self {
-        Self::new(VibratoTremolo::default(), 1.0)
-    }
-
-    pub fn vibrato(period_helper: &PeriodHelper) -> Self {
-        match period_helper.freq_type {
-            FrequencyType::LinearFrequencies => Self::new(VibratoTremolo::default(), 2.0 * 4.0),
-            FrequencyType::AmigaFrequencies => Self::new(VibratoTremolo::default(), 2.0),
-        }
-    }
-}
-
 impl EffectPlugin for EffectVibratoTremolo {
     /* param1: speed, param2:depth */
-    fn tick0(&mut self, param1: f32, param2: f32) -> f32 {
-        self.data.speed = param1;
-        self.data.depth = param2;
+    fn tick0(&mut self, speed: f32, depth: f32) -> f32 {
+        self.data.speed = speed;
+        self.data.depth = depth;
         self.retrigger()
     }
 
@@ -84,51 +58,7 @@ impl EffectPlugin for EffectVibratoTremolo {
         self.value
     }
 
-    fn clamp(&self, value: f32) -> f32 {
-        value
-    }
-
     fn value(&self) -> f32 {
-        self.value * self.multiplier
-    }
-}
-
-impl EffectXM2EffectPlugin for EffectVibratoTremolo {
-    fn xm_convert(param: u8, _special: u8) -> Option<(Option<f32>, Option<f32>)> {
-        if param > 0 {
-            let depth = (param & 0x0F) as f32 / 16.0;
-            let depth = if depth != 0.0 { Some(depth) } else { None };
-
-            // from 0..15 to 0..1.0
-            let speed = ((param & 0xF0) >> 4) as f32 / 64.0;
-            let speed = if speed != 0.0 { Some(speed) } else { None };
-
-            Some((speed, depth))
-        } else {
-            None
-        }
-    }
-
-    fn xm_update_effect(&mut self, param: u8, volcolumn: u8, _special2: f32) {
-        if volcolumn == 0 {
-            if let Some((sspeed, sdepth)) = EffectVibratoTremolo::xm_convert(param, 0) {
-                if let Some(speed) = sspeed {
-                    self.data.speed = speed;
-                }
-                if let Some(depth) = sdepth {
-                    self.data.depth = depth;
-                }
-            }
-        } else if volcolumn == 1 {
-            let vol_data = (param & 0x0F) as f32 / 64.0;
-            if vol_data != 0.0 {
-                self.data.speed = vol_data;
-            }
-        } else {
-            let vol_data = (param & 0x0F) as f32 / 16.0;
-            if vol_data != 0.0 {
-                self.data.depth = vol_data;
-            }
-        }
+        self.value
     }
 }

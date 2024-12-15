@@ -4,9 +4,9 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::{Arc, Mutex};
 
 use xmrs::import::amiga::amiga_module::AmigaModule;
-use xmrs::prelude::*;
 use xmrs::import::s3m::s3m_module::S3mModule;
 use xmrs::import::xm::xmmodule::XmModule;
+use xmrs::prelude::*;
 
 use xmrsplayer::prelude::*;
 
@@ -52,8 +52,8 @@ struct Cli {
     position: usize,
 
     /// Force speed
-    #[arg(short = 's', long, default_value = "0")]
-    speed: u16,
+    #[arg(short = 'e', long, default_value = "0")]
+    speed: usize,
 
     /// Test SID player as a Proof of Concept
     #[cfg(feature = "sid")]
@@ -85,13 +85,14 @@ fn sid_test_player(cli: &Cli) {
 
     play_music(
         module_ref,
+        cli.song,
         cli.amplification,
         cli.position,
         cli.loops,
         cli.debug,
         cli.ch,
         cli.speed,
-        false,
+        cli.historical,
         cli.output.clone(),
     );
 }
@@ -153,7 +154,7 @@ fn play_music(
     loops: usize,
     debug: bool,
     ch: u8,
-    speed: u16,
+    speed: usize,
     historical: bool,
     output: Option<String>,
 ) {
@@ -247,7 +248,7 @@ fn play_music(
                         }
                     }
                     Key::ArrowRight => {
-                        let len = module.pattern_order.len();
+                        let len = module.pattern_order[song].len();
                         let i = player.lock().unwrap().get_current_table_index();
                         if i + 1 < len {
                             player.lock().unwrap().goto(i + 1, 0, 0);

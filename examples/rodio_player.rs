@@ -4,9 +4,9 @@ use rodio::Sink;
 use std::sync::{Arc, Mutex};
 
 use xmrs::import::amiga::amiga_module::AmigaModule;
-use xmrs::prelude::*;
 use xmrs::import::s3m::s3m_module::S3mModule;
 use xmrs::import::xm::xmmodule::XmModule;
+use xmrs::prelude::*;
 
 mod bufferedsource;
 use bufferedsource::BufferedSource;
@@ -220,7 +220,7 @@ fn rodio_play(
                     }
                 }
                 Key::ArrowRight => {
-                    let len = module.pattern_order.len();
+                    let len = module.pattern_order[song].len();
                     let i = player.lock().unwrap().get_current_table_index();
                     if i + 1 < len {
                         player.lock().unwrap().goto(i + 1, 0, 0);

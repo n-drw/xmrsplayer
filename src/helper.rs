@@ -19,31 +19,22 @@ pub fn inverse_lerp(u: f32, v: f32, lerp: f32) -> f32 {
 
 #[inline(always)]
 pub fn clamp_up_1f(value: &mut f32, limit: f32) {
-    if *value > limit {
-        *value = limit;
-    }
+    *value = value.min(limit);
 }
 
 #[inline(always)]
 pub fn clamp_up(value: &mut f32) {
-    clamp_up_1f(value, 1.0);
+    *value = value.min(1.0);
 }
 
 #[inline(always)]
 pub fn clamp_down_1f(value: &mut f32, limit: f32) {
-    if *value < limit {
-        *value = limit;
-    }
+    *value = value.max(limit);
 }
 
 #[inline(always)]
 pub fn clamp_down(value: &mut f32) {
-    clamp_down_1f(value, 0.0);
-}
-
-#[inline(always)]
-pub fn clamp(value: &mut f32) {
-    *value = value.clamp(0.0, 1.0);
+    *value = value.max(0.0);
 }
 
 #[inline(always)]

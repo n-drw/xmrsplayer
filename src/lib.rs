@@ -10,12 +10,7 @@ pub(crate) mod effect;
 pub(crate) mod triggerkeep;
 
 pub(crate) mod effect_arpeggio;
-pub(crate) mod effect_multi_retrig_note;
-pub(crate) mod effect_portamento;
-pub(crate) mod effect_toneportamento;
-//pub(crate) mod effect_tremor;
 pub(crate) mod effect_vibrato_tremolo;
-pub(crate) mod effect_volume_panning_slide;
 
 pub mod channel;
 pub(crate) mod helper;

@@ -10,7 +10,7 @@ use micromath::F32Ext;
 use num_traits::float::Float;
 
 const M: u32 = 28; // 28 bits for fract part seems the better i can have
-const M_MASK: u32 = (1<<M) - 1;
+const M_MASK: u32 = (1 << M) - 1;
 
 #[derive(Clone)]
 pub struct StateSample<'a> {
@@ -30,14 +30,14 @@ impl<'a> StateSample<'a> {
         Self {
             sample,
             finetune,
-            position: (0,0),
+            position: (0, 0),
             step: None,
             rate,
         }
     }
 
     pub fn reset(&mut self) {
-        self.position = (0,0);
+        self.position = (0, 0);
         self.step = None;
     }
 
@@ -75,7 +75,7 @@ impl<'a> StateSample<'a> {
     }
 
     fn tick(&mut self) -> (f32, f32) {
-        let t = self.get_position_fraction() as f32 / (1<<M) as f32;
+        let t = self.get_position_fraction() as f32 / (1 << M) as f32;
 
         let useek = self.sample.meta_seek(self.get_position() as usize);
         let u = self.sample.at(useek);
@@ -109,7 +109,6 @@ impl<'a> StateSample<'a> {
     fn get_position(&mut self) -> u32 {
         return self.position.0;
     }
-
 
     #[inline(always)]
     fn get_position_trunc(&self) -> u32 {

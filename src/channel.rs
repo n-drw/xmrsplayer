@@ -4,20 +4,25 @@ use micromath::F32Ext;
 #[cfg(feature = "libm")]
 #[allow(unused_imports)]
 use num_traits::float::Float;
+use xmrs::waveform::WaveformState;
 
 use crate::effect::*;
 use crate::effect_arpeggio::EffectArpeggio;
-use crate::effect_multi_retrig_note::EffectMultiRetrigNote;
-use crate::effect_portamento::EffectPortamento;
-use crate::effect_toneportamento::EffectTonePortamento;
 use crate::effect_vibrato_tremolo::EffectVibratoTremolo;
-use crate::effect_volume_panning_slide::EffectVolumePanningSlide;
 use crate::historical_helper::HistoricalHelper;
 use crate::triggerkeep::*;
 
 use crate::helper::*;
 use crate::state_instr_default::StateInstrDefault;
 use xmrs::prelude::*;
+
+#[derive(Clone, PartialEq, Default)]
+struct NoteRetrigState {
+    note: Pitch,
+    instr: Option<usize>,
+    speed: usize,
+    volume_modifier: NoteRetrigOperator,
+}
 
 #[derive(Clone)]
 pub struct Channel<'a> {
@@ -38,34 +43,23 @@ pub struct Channel<'a> {
     // Instrument
     instr: Option<StateInstrDefault<'a>>,
 
-    arpeggio: EffectArpeggio,
-    multi_retrig_pitch: EffectMultiRetrigNote,
-    panning_slide: EffectVolumePanningSlide,
-
-    // one memory for each shift effect
-    portamento_up: EffectPortamento,
-    portamento_down: EffectPortamento,
-    portamento_fine_up: EffectPortamento,
-    portamento_fine_down: EffectPortamento,
-    portamento_extrafine_up: EffectPortamento,
-    portamento_extrafine_down: EffectPortamento,
-
-    tone_portamento: EffectTonePortamento,
-    tremolo: EffectVibratoTremolo,
-    volume_slide: EffectVolumePanningSlide,
-    volume_slide_tick0: EffectVolumePanningSlide,
-    vibrato: EffectVibratoTremolo,
-
-    semitone: bool,
-
-    note_delay_param: u8,
+    effect_arpeggio: EffectArpeggio,
+    effect_note_retrig_backup: NoteRetrigState,
+    effect_note_retrig_counter: usize,
+    effect_panbrello: EffectVibratoTremolo,
+    effect_portamento: f32,
+    effect_tone_portamento_goal: f32,
+    effect_tremolo: EffectVibratoTremolo,
+    effect_tremor: bool,
+    effect_tremor_on: usize,
+    effect_tremor_off: usize,
+    effect_vibrato: EffectVibratoTremolo,
+    effect_semitone: bool,
+    effect_note_delay: usize,
     /// Where to restart a E6y loop
     pub(crate) pattern_loop_origin: usize,
     /// How many loop passes have been done
     pub(crate) pattern_loop_count: usize,
-
-    tremor_param: u8,
-    tremor_on: bool,
 
     pub muted: bool,
 
@@ -82,30 +76,25 @@ impl<'a> Channel<'a> {
             rate,
             volume: 1.0,
             panning: 0.5,
-            arpeggio: EffectArpeggio::new(historical.clone()),
-            tone_portamento: EffectTonePortamento::new(period_helper.clone()),
-            vibrato: EffectVibratoTremolo::vibrato(&period_helper),
-            tremolo: EffectVibratoTremolo::tremolo(),
-            multi_retrig_pitch: EffectMultiRetrigNote::new(0.0, 0),
             note: 0.0,
             current: TrackUnit::default(),
             period: 0.0,
             instr: None,
-            panning_slide: EffectVolumePanningSlide::default(),
-            portamento_up: EffectPortamento::default(),
-            portamento_down: EffectPortamento::default(),
-            portamento_fine_up: EffectPortamento::default(),
-            portamento_fine_down: EffectPortamento::default(),
-            portamento_extrafine_up: EffectPortamento::default(),
-            portamento_extrafine_down: EffectPortamento::default(),
-            volume_slide: EffectVolumePanningSlide::default(),
-            volume_slide_tick0: EffectVolumePanningSlide::default(),
-            semitone: false,
-            note_delay_param: 0,
+            effect_arpeggio: EffectArpeggio::new(historical.clone()),
+            effect_note_retrig_backup: NoteRetrigState::default(),
+            effect_note_retrig_counter: 0,
+            effect_panbrello: EffectVibratoTremolo::default(),
+            effect_tremolo: EffectVibratoTremolo::default(),
+            effect_tremor: false,
+            effect_tremor_on: 0,
+            effect_tremor_off: 0,
+            effect_vibrato: EffectVibratoTremolo::default(),
+            effect_portamento: 0.0,
+            effect_tone_portamento_goal: 0.0,
+            effect_semitone: false,
+            effect_note_delay: 0,
             pattern_loop_origin: 0,
             pattern_loop_count: 0,
-            tremor_param: 0,
-            tremor_on: false,
             muted: false,
             actual_volume: [0.0, 0.0],
         }
@@ -125,14 +114,14 @@ impl<'a> Channel<'a> {
         self.volume = 0.0;
     }
 
-    fn key_off_historical(&mut self, tick: u16) {
+    fn key_off_historical(&mut self, tick: usize) {
         if let Some(i) = &mut self.instr {
             i.key_off();
             // openmpt `key_off.xm`: Key off at tick 0 (K00) is very dodgy command. If there is a note next to it, the note is ignored. If there is a volume column command or instrument next to it and the current instrument has no volume envelope, the note is faded out instead of being cut.
             if (tick == 0
                 && (i.has_volume_envelope()
                     || self.current.instrument.is_some()
-                    || self.current.volume != 0))
+                    || self.current.velocity != 0.0))
                 || (tick != 0 && i.has_volume_envelope())
             {
                 self.trigger_pitch(
@@ -146,7 +135,7 @@ impl<'a> Channel<'a> {
         }
     }
 
-    fn key_off(&mut self, tick: u16) {
+    fn key_off(&mut self, tick: usize) {
         if self.historical.is_some() {
             self.key_off_historical(tick);
             return;
@@ -160,7 +149,7 @@ impl<'a> Channel<'a> {
     }
 
     pub(crate) fn trigger_pitch(&mut self, flags: TriggerKeep) {
-        self.tremor_on = false;
+        self.effect_tremor = false;
 
         match &mut self.instr {
             Some(instr) => {
@@ -184,7 +173,12 @@ impl<'a> Channel<'a> {
 
                 if !contains(flags, TRIGGER_KEEP_PERIOD) {
                     self.period = self.period_helper.note_to_period(self.note);
-                    instr.update_frequency(self.period, 0.0, self.vibrato.value(), self.semitone);
+                    instr.update_frequency(
+                        self.period,
+                        0.0,
+                        self.effect_vibrato.value(),
+                        self.effect_semitone,
+                    );
                 }
             }
             None => {}
@@ -194,15 +188,15 @@ impl<'a> Channel<'a> {
     fn tickn_update_instr(&mut self) {
         match &mut self.instr {
             Some(instr) => {
-                let panning: f32 = self.panning
-                    + (instr.envelope_panning.value - 0.5)
-                        * (0.5 - (self.panning - 0.5).abs())
-                        * 2.0;
-                let mut volume = 0.0;
+                let mut panning = self.panning + self.effect_panbrello.value();
+                panning = panning.clamp(0.0, 1.0);
+                panning +=
+                    (instr.envelope_panning.value - 0.5) * (0.5 - (self.panning - 0.5).abs()) * 2.0;
 
-                if !self.tremor_on {
-                    volume = self.volume + self.tremolo.value();
-                    clamp(&mut volume);
+                let mut volume = 0.0;
+                if !self.effect_tremor {
+                    volume = self.volume + self.effect_tremolo.value();
+                    volume = volume.clamp(0.0, 1.0);
                     volume *= instr.get_volume();
                 }
 
@@ -210,479 +204,313 @@ impl<'a> Channel<'a> {
                 self.actual_volume[1] = volume * (1.0 - panning).sqrt();
 
                 let arp_pitch = if self.current.has_arpeggio() {
-                    self.arpeggio.value()
+                    self.effect_arpeggio.value()
                 } else {
                     0.0
                 };
 
-                instr.update_frequency(self.period, arp_pitch, self.vibrato.value(), self.semitone)
+                instr.update_frequency(
+                    self.period,
+                    arp_pitch,
+                    self.effect_vibrato.value(),
+                    self.effect_semitone,
+                )
             }
             None => {}
         }
     }
 
-    fn tick_effects(&mut self, current_tick: u16) {
-        match self.current.effect_type {
-            0 => {
-                /* 0xy: Arpeggio */
-                if self.current.effect_parameter > 0 {
-                    self.arpeggio.tick();
-                }
-            }
-            1 if current_tick != 0 => {
-                /* 1xx: Portamento up */
-                self.portamento_up.tick();
-                self.period = self.portamento_up.clamp(self.period);
-            }
-            2 if current_tick != 0 => {
-                /* 2xx: Portamento down */
-                self.portamento_down.tick();
-                self.period = self.portamento_down.clamp(self.period);
-            }
-            3 if current_tick != 0 => {
-                /* 3xx: Tone portamento */
-                self.tone_portamento.tick();
-                self.period = self.tone_portamento.clamp(self.period);
-            }
-            4 if current_tick != 0 => {
-                /* 4xy: Vibrato */
-                self.vibrato.tick();
-            }
-            5 if current_tick != 0 => {
-                /* 5xy: Tone portamento + Volume slide */
-                self.tone_portamento.tick();
-                self.period = self.tone_portamento.clamp(self.period);
-                // now volume slide
-                self.volume += self.volume_slide.tick();
-            }
-            6 if current_tick != 0 => {
-                /* 6xy: Vibrato + Volume slide */
-                self.vibrato.tick();
-                // now volume slide
-                self.volume += self.volume_slide.tick();
-            }
-            7 if current_tick != 0 => {
-                /* 7xy: Tremolo */
-                self.tremolo.tick();
-            }
-            0xA if current_tick != 0 => {
-                /* Axy: Volume slide */
-                self.volume += self.volume_slide.tick();
-            }
-            0xE => {
-                /* EXy: Extended command */
-                match self.current.effect_parameter >> 4 {
-                    0x9 if current_tick != 0 => {
-                        /* E9y: Retrig note */
-                        if self.current.effect_parameter & 0x0F != 0 {
-                            let r = current_tick % (self.current.effect_parameter as u16 & 0x0F);
-                            if r == 0 {
-                                self.trigger_pitch(TRIGGER_KEEP_VOLUME);
-                                if let Some(instr) = &mut self.instr {
-                                    instr.tick();
-                                }
-                            }
-                        }
-                    }
-                    0xC => {
-                        /* ECy: Note cut */
-                        if (self.current.effect_parameter as u16 & 0x0F) == current_tick {
-                            self.cut_pitch();
-                        }
-                    }
-                    0xD => {
-                        /* EDy: Note delay */
-                        if self.note_delay_param as u16 == current_tick {
-                            self.tick0_load_instrument_and_pitch();
-                            // Volume effect
-                            self.tick0_volume_effects();
-                            // Effects
-                            self.tick0_effects();
-
-                            /* Special KeyOff cases */
-                            if self.current.note.is_keyoff() {
-                                if self.current.instrument.is_none() {
-                                    if let Some(i) = &mut self.instr {
-                                        i.volume_reset();
-                                    }
-                                } else {
-                                    self.trigger_pitch(TRIGGER_KEEP_NONE);
-                                }
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            0x14 => {
-                /* Kxx: Key off */
-                if current_tick == self.current.effect_parameter as u16 {
-                    self.key_off(current_tick);
-                }
-            }
-            0x19 if current_tick != 0 => {
-                /* Pxy: Panning slide */
-                self.panning += self.panning_slide.tick();
-                self.panning = self.panning_slide.clamp(self.panning);
-            }
-            0x1B if current_tick != 0 => {
-                /* Rxy: Multi retrig note */
-                if self.multi_retrig_pitch.tick() == 0.0 {
-                    self.trigger_pitch(TRIGGER_KEEP_VOLUME | TRIGGER_KEEP_ENVELOPE);
-                    if let Some(instr) = &self.instr {
-                        if self.volume == 0.0 && !instr.volume_envelope.enabled {
-                            self.volume = self.multi_retrig_pitch.clamp(self.volume);
-                            let current_volume = self.current.volume;
-                            if (0x10..=0x50).contains(&current_volume) {
-                                // priority on original volume
-                                self.volume = (current_volume - 0x10) as f32 / 64.0;
-                            } else if (0xC0..=0xCF).contains(&current_volume) {
-                                // priority on original panning
-                                self.panning = (current_volume & 0x0F) as f32 / 16.0;
-                            }
-                        }
-                    }
-                }
-            }
-            0x1D if current_tick != 0 => {
-                /* Txy: Tremor
-                    Rapidly switches the sample volume on and off on every tick of the row except the first.
-                    Volume is on for x + 1 ticks and off for y + 1 ticks.
-
-                    tremor_on: bool = [(T-1) % (X+1+Y+1) ] > X
-                */
-                self.tremor_on = (current_tick - 1)
-                    % ((self.tremor_param as u16 >> 4) + (self.tremor_param as u16 & 0x0F) + 2)
-                    > (self.tremor_param as u16 >> 4);
-            }
-            _ => {}
-        }
-    }
-
-    fn tick_volume_effects(&mut self) {
-        match self.current.volume >> 4 {
-            0x6 => {
-                /* - - Volume slide down */
-                self.volume_slide
-                    .xm_update_effect(self.current.volume, 2, 64.0);
-                self.volume += self.volume_slide.tick();
-            }
-            0x7 => {
-                /* + - Volume slide up */
-                self.volume_slide
-                    .xm_update_effect(self.current.volume, 1, 64.0);
-                self.volume += self.volume_slide.tick();
-            }
-            0xB => {
-                /* V - Vibrato */
-                self.vibrato.tick();
-            }
-            0xF => {
-                /* M - Tone portamento */
-                self.tone_portamento.tick();
-                self.period = self.tone_portamento.clamp(self.period);
-            }
-            _ => {}
-        }
-    }
-
-    pub(crate) fn tick(&mut self, current_tick: u16) {
+    pub(crate) fn tick(&mut self, current_tick: usize) {
         if let Some(instr) = &mut self.instr {
             instr.tick();
-        } else if self.current.has_delay() {
-            self.tick_effects(current_tick);
+            self.tickn_effects(current_tick);
             self.tickn_update_instr();
-            return;
+        } else if self.current.has_delay() {
+            self.tickn_effects(current_tick);
+            self.tickn_update_instr();
         }
-        self.tick_volume_effects();
-        self.tick_effects(current_tick);
-        self.tickn_update_instr();
     }
 
-    fn tick0_effects(&mut self) {
-        match self.current.effect_type {
-            0x0 => self
-                .arpeggio
-                .xm_update_effect(self.current.effect_parameter, 0, 0.0),
-            0x1 => {
-                self.portamento_up
-                    .xm_update_effect(self.current.effect_parameter, 0, 1.0);
-            }
-            0x2 => {
-                self.portamento_down
-                    .xm_update_effect(self.current.effect_parameter, 0, 0.0);
-            }
-            0x3 => {
-                self.tone_portamento
-                    .xm_update_effect(self.current.effect_parameter, 1, self.note);
-            }
-            0x4 => self
-                .vibrato
-                .xm_update_effect(self.current.effect_parameter, 0, 0.0),
-            0x5 => {
-                /* 5xy: Tone portamento + Volume slide */
-                self.volume_slide
-                    .xm_update_effect(self.current.effect_parameter, 0, 64.0);
-            }
-            0x6 => {
-                /* 6xy: Vibrato + Volume slide */
-                self.volume_slide
-                    .xm_update_effect(self.current.effect_parameter, 0, 64.0);
-            }
-            0x7 => self
-                .tremolo
-                .xm_update_effect(self.current.effect_parameter, 0, 0.0),
-            0x8 => {
-                /* 8xx: Set panning */
-                self.panning = self.current.effect_parameter as f32 / 256.0;
-            }
-            0x9 => {
-                /* 9xx: Sample offset */
-                if self.current.note.is_valid() {
-                    if let Some(instr) = &mut self.instr {
-                        if let Some(sample) = &mut instr.state_sample {
-                            sample.set_position(self.current.effect_parameter as usize * 256);
+    fn tickn_effects(&mut self, current_tick: usize) {
+        let len = self.current.effects.len();
+        for i in 0..len {
+            match self.current.effects[i].clone() {
+                TrackEffect::Arpeggio {
+                    half1: n1,
+                    half2: n2,
+                } => {
+                    if current_tick == 0 {
+                        self.effect_arpeggio.tick0(n1 as f32, n2 as f32);
+                    } else {
+                        if n1 != 0 || n2 != 0 {
+                            self.effect_arpeggio.tick();
                         }
                     }
                 }
-            }
-            0xA => {
-                /* Axy: Volume slide */
-                self.volume_slide
-                    .xm_update_effect(self.current.effect_parameter, 0, 64.0);
-            }
-            0xC => {
-                /* Cxx: Set volume */
-                self.volume = if self.current.effect_parameter > 64 {
-                    1.0
-                } else {
-                    self.current.effect_parameter as f32 / 64.0
-                };
-            }
-            0xE => {
-                /* EXy: Extended command */
-                match self.current.effect_parameter >> 4 {
-                    0x1 => {
-                        /* E1y: Fine Portamento up */
-                        self.portamento_fine_up.xm_update_effect(
-                            self.current.effect_parameter,
-                            1,
-                            1.0,
-                        );
-                        self.period = self.portamento_fine_up.clamp(self.period);
+                TrackEffect::ChannelVolume(_v) => {
+                    todo!();
+                }
+                TrackEffect::ChannelVolumeSlide {
+                    speed: _s,
+                    fine: _f,
+                } => {
+                    todo!();
+                }
+                TrackEffect::Glissando(glissando) => {
+                    if current_tick == 0 {
+                        self.effect_semitone = glissando;
                     }
-                    0x2 => {
-                        /* E2y: Fine portamento down */
-                        self.portamento_fine_down.xm_update_effect(
-                            self.current.effect_parameter,
-                            1,
-                            0.0,
-                        );
-                        self.period = self.portamento_fine_down.clamp(self.period);
-                    }
-                    0x3 => {
-                        /* E3y: Set glissando control */
-                        self.semitone = self.current.effect_parameter != 0;
-                    }
-                    0x4 => {
-                        /* E4y: Set vibrato control */
-                        // TODO: more abstraction to be done one day here!
-                        self.vibrato.data.waveform = match self.current.effect_parameter & 3 {
-                            0 => Waveform::Sine,
-                            1 => Waveform::RampDown,
-                            _ => Waveform::Square
-                        };
-                        if ((self.current.effect_parameter >> 2) & 1) == 0 {
-                            self.vibrato.retrigger();
+                }
+                TrackEffect::InstrumentFineTune(finetune) => {
+                    if current_tick == 0 && self.current.note.is_valid() {
+                        if let Some(instr) = &mut self.instr {
+                            instr.set_finetune(finetune);
+                            self.note =
+                                self.current.note.value() as f32 + instr.get_finetuned_pitch();
+                            self.period = self.period_helper.note_to_period(self.note);
                         }
                     }
-                    0x5 => {
-                        /* E5y: Set finetune */
+                }
+                TrackEffect::InstrumentNewNoteAction(_nna) => {
+                    todo!()
+                }
+                TrackEffect::InstrumentPanningEnvelopePosition(position) => {
+                    if current_tick == 0 {
+                        if let Some(instr) = &mut self.instr {
+                            instr.envelope_panning.counter = position;
+                        }
+                    }
+                }
+                TrackEffect::InstrumentPanningEnvelope(pe) => {
+                    if current_tick == 0 {
+                        if let Some(instr) = &mut self.instr {
+                            instr.envelope_panning.enabled = pe;
+                        }
+                    }
+                }
+                TrackEffect::InstrumentPitchEnvelope(_pe) => {
+                    todo!()
+                }
+                TrackEffect::InstrumentSampleOffset(seek) => {
+                    if current_tick == 0 {
                         if self.current.note.is_valid() {
                             if let Some(instr) = &mut self.instr {
-                                let finetune =
-                                    (self.current.effect_parameter & 0x0F) as f32 / 8.0 - 1.0;
-                                instr.set_finetune(finetune);
-                                self.note = self.current.note.value() as f32
-                                    + instr.get_finetuned_pitch();
-                                self.period = self.period_helper.note_to_period(self.note);
-                            }
-                        }
-                    }
-                    0x7 => {
-                        /* E7y: Set tremolo control */
-                        self.tremolo.data.waveform = match self.current.effect_parameter & 3 {
-                            0 => Waveform::Sine,
-                            1 => Waveform::RampDown,
-                            _ => Waveform::Square
-                        };
-                        if ((self.current.effect_parameter >> 2) & 1) == 0 {
-                            self.tremolo.retrigger();
-                        }
-                    }
-                    0x9 => {
-                        /* E90: Retrigger note */
-                        if self.current.effect_parameter & 0x0F == 0 {
-                            self.trigger_pitch(TRIGGER_KEEP_VOLUME);
-                            if let Some(instr) = &mut self.instr {
-                                instr.tick();
-                            }
-                        }
-                    }
-                    0xA => {
-                        /* EAy: Fine volume slide up */
-                        self.volume_slide_tick0.xm_update_effect(
-                            self.current.effect_parameter,
-                            1,
-                            64.0,
-                        );
-                        self.volume += self.volume_slide_tick0.tick();
-                    }
-                    0xB => {
-                        /* EBy: Fine volume slide down */
-                        self.volume_slide_tick0.xm_update_effect(
-                            self.current.effect_parameter,
-                            2,
-                            64.0,
-                        );
-                        self.volume += self.volume_slide_tick0.tick();
-                    }
-                    0xD => {
-                        /* ED0: Note with no delay */
-                        if self.current.effect_parameter & 0xF0 == 0 {
-                            if self.current.note.is_none() {
-                                self.trigger_pitch(
-                                    TRIGGER_KEEP_SAMPLE_POSITION
-                                        | TRIGGER_KEEP_VOLUME
-                                        | TRIGGER_KEEP_PERIOD,
-                                );
-                            } else if self.current.note.is_keyoff() {
-                                if self.current.instrument.is_none() {
-                                    self.key_off(0);
-                                } else {
-                                    self.trigger_pitch(TRIGGER_KEEP_PERIOD | TRIGGER_KEEP_ENVELOPE);
+                                if let Some(sample) = &mut instr.state_sample {
+                                    sample.set_position(seek);
                                 }
                             }
                         }
                     }
-                    _ => {}
                 }
-            }
-            0x14 => {
-                /* Kxx: Key off */
-                if 0 == self.current.effect_parameter as u16 {
-                    self.key_off(0);
+                TrackEffect::InstrumentSurround(_s) => {
+                    todo!()
                 }
-            }
-            0x15 => {
-                /* Lxx: Set envelope position */
-                if let Some(instr) = &mut self.instr {
-                    instr.envelope_volume.counter = self.current.effect_parameter as usize;
-                    if instr.sustained {
-                        instr.envelope_panning.counter = self.current.effect_parameter as usize;
+                TrackEffect::InstrumentVolumeEnvelopePosition(position) => {
+                    if current_tick == 0 {
+                        if let Some(instr) = &mut self.instr {
+                            instr.envelope_volume.counter = position;
+                        }
+                    }
+                }
+                TrackEffect::InstrumentVolumeEnvelope(pe) => {
+                    if current_tick == 0 {
+                        if let Some(instr) = &mut self.instr {
+                            instr.envelope_volume.enabled = pe;
+                        }
+                    }
+                }
+                TrackEffect::NoteCut { tick: t, past: _p } => {
+                    // TODO: past
+                    if current_tick == t {
+                        self.cut_pitch();
+                    }
+                }
+                TrackEffect::NoteDelay(delay) => {
+                    if current_tick == 0 {
+                        if self.current.note.is_none() {
+                            self.trigger_pitch(
+                                TRIGGER_KEEP_SAMPLE_POSITION
+                                    | TRIGGER_KEEP_VOLUME
+                                    | TRIGGER_KEEP_PERIOD,
+                            );
+                        } else if self.current.note.is_keyoff() {
+                            if self.current.instrument.is_none() {
+                                self.key_off(0);
+                            } else {
+                                self.trigger_pitch(TRIGGER_KEEP_PERIOD | TRIGGER_KEEP_ENVELOPE);
+                            }
+                        }
+                    } else if current_tick == delay {
+                        self.tick0_load_instrument_and_pitch();
+                        self.tickn_effects(0);
+
+                        /* Special KeyOff cases */
+                        if self.current.note.is_keyoff() {
+                            if self.current.instrument.is_none() {
+                                if let Some(i) = &mut self.instr {
+                                    i.volume_reset();
+                                }
+                            } else {
+                                self.trigger_pitch(TRIGGER_KEEP_NONE);
+                            }
+                        }
+                    }
+                }
+                TrackEffect::NoteFadeOut { tick: _t, past: _p } => {
+                    todo!()
+                }
+                TrackEffect::NoteOff { tick: t, past: _p } => {
+                    // TODO: past
+                    if current_tick == t {
+                        self.key_off(t);
+                    }
+                }
+                TrackEffect::NoteRetrig {
+                    speed: s,
+                    volume_modifier: m,
+                } => {
+                    //TODO: check if NoteDelay then check with current_tick - delay
+
+                    let current_state = NoteRetrigState {
+                        note: self.current.note,
+                        instr: self.current.instrument,
+                        speed: s,
+                        volume_modifier: m.clone(),
+                    };
+
+                    if current_tick == 0 {
+                        if self.effect_note_retrig_backup != current_state {
+                            self.effect_note_retrig_counter = 0;
+                            self.effect_note_retrig_backup = current_state;
+                        }
+                    }
+                    // If speed (s) is 0, retrig is effectively disabled.
+                    if s != 0 && self.effect_note_retrig_counter % s == 0 {
+                        self.trigger_pitch(TRIGGER_KEEP_VOLUME | TRIGGER_KEEP_ENVELOPE);
+                        match m {
+                            NoteRetrigOperator::None => {
+                                // No volume modification, just retrigger.
+                            }
+                            NoteRetrigOperator::Sum(delta) => {
+                                self.volume = (self.volume + delta).clamp(0.0, 1.0);
+                            }
+                            NoteRetrigOperator::Mul(factor) => {
+                                self.volume = (self.volume * factor).clamp(0.0, 1.0);
+                            }
+                        }
+                    }
+                    // Increment retrig counter after processing
+                    self.effect_note_retrig_counter += 1;
+                }
+                TrackEffect::Panbrello { speed: s, depth: d } => {
+                    if current_tick == 0 {
+                        self.effect_panbrello.tick0(s, d);
+                    } else {
+                        self.effect_panbrello.tick();
+                    }
+                }
+                TrackEffect::PanbrelloWaveform {
+                    waveform: w,
+                    retrig: r,
+                } => {
+                    self.effect_panbrello.data.waveform = WaveformState::new(w);
+                    if r {
+                        self.effect_panbrello.retrigger();
+                    }
+                }
+                TrackEffect::Panning(p) => {
+                    if current_tick == 0 {
+                        self.panning = p.clamp(0.0, 1.0);
+                    }
+                }
+                TrackEffect::PanningSlide { speed: s, fine: f } => {
+                    if current_tick == 0 || (current_tick != 0 && !f) {
+                        self.panning = (self.panning + s).clamp(0.0, 1.0);
+                    }
+                }
+                TrackEffect::Portamento(p) => {
+                    if current_tick == 0 {
+                        self.effect_portamento = p;
+                    } else {
+                        self.period = (self.period + p).clamp(1.0, 32000.0 - 1.0);
+                    }
+                }
+                TrackEffect::TonePortamento(p) => {
+                    if current_tick == 0 {
+                        self.effect_tone_portamento_goal = self.note;
+                    } else {
+                        if self.period != self.effect_tone_portamento_goal {
+                            slide_towards(&mut self.period, self.effect_tone_portamento_goal, p);
+                        }
+                    }
+                }
+                TrackEffect::Tremolo { speed: s, depth: d } => {
+                    if current_tick == 0 {
+                        self.effect_tremolo.tick0(s, d);
+                    } else {
+                        self.effect_tremolo.tick();
+                    }
+                }
+                TrackEffect::TremoloWaveform {
+                    waveform: w,
+                    retrig: r,
+                } => {
+                    self.effect_tremolo.data.waveform = WaveformState::new(w);
+                    if r {
+                        self.effect_tremolo.retrigger();
+                    }
+                }
+                TrackEffect::Tremor {
+                    on_time: on,
+                    off_time: off,
+                } => {
+                    if current_tick == 0 {
+                        self.effect_tremor_on = on;
+                        self.effect_tremor_off = off;
+                        self.effect_tremor = false;
+                    } else {
+                        let on = self.effect_tremor_on;
+                        let off = self.effect_tremor_off;
+                        self.effect_tremor = (current_tick - 1) % (on + 1 + off + 1) > on;
+                    }
+                }
+                TrackEffect::Vibrato { speed: s, depth: d } => {
+                    if current_tick == 0 {
+                        self.effect_vibrato.tick0(s, d);
+                    } else {
+                        self.effect_vibrato.tick();
+                    }
+                }
+                TrackEffect::VibratoSpeed(s) => {
+                    if current_tick == 0 {
+                        self.effect_vibrato.data.speed = s;
+                    }
+                }
+                TrackEffect::VibratoDepth(d) => {
+                    if current_tick == 0 {
+                        self.effect_vibrato.data.depth = d;
+                    }
+                }
+                TrackEffect::VibratoWaveform {
+                    waveform: w,
+                    retrig: r,
+                } => {
+                    self.effect_vibrato.data.waveform = WaveformState::new(w);
+                    if r {
+                        self.effect_vibrato.retrigger();
+                    }
+                }
+                TrackEffect::Volume { value: v, tick: t } => {
+                    if current_tick == t {
+                        self.volume = v.clamp(0.0, 1.0);
+                    }
+                }
+                TrackEffect::VolumeSlide { speed: s, fine: f } => {
+                    if current_tick == 0 || (current_tick != 0 && !f) {
+                        self.volume = (self.volume + s).clamp(0.0, 1.0);
                     }
                 }
             }
-            0x19 => {
-                /* Pxy: Panning slide */
-                self.panning_slide
-                    .xm_update_effect(self.current.effect_parameter, 0, 16.0);
-                self.panning = self.panning_slide.clamp(self.panning);
-            }
-            0x1B => {
-                /* Rxy: Multi retrig note */
-                self.multi_retrig_pitch
-                    .xm_update_effect(self.current.effect_parameter, 0, 0.0);
-            }
-            0x1D => {
-                /* Txy: Tremor */
-                if self.current.effect_parameter > 0 {
-                    self.tremor_param = self.current.effect_parameter;
-                }
-            }
-            0x21 => {
-                /* Xxy: Extra stuff */
-                let effect_case = self.current.effect_parameter >> 4;
-
-                if effect_case == 1 {
-                    /* X1y: Extra fine portamento up */
-                    self.portamento_extrafine_up.xm_update_effect(
-                        self.current.effect_parameter,
-                        2,
-                        1.0,
-                    );
-                    self.period = self.portamento_extrafine_up.clamp(self.period);
-                } else if effect_case == 2 {
-                    /* X2y: Extra fine portamento down */
-                    self.portamento_extrafine_down.xm_update_effect(
-                        self.current.effect_parameter,
-                        2,
-                        0.0,
-                    );
-                    self.period = self.portamento_extrafine_down.clamp(self.period);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    fn tick0_volume_effects(&mut self) {
-        match self.current.volume >> 4 {
-            0x0 => {} // Nothing
-            // V - Set volume (0..63)
-            0x1..=0x4 => self.volume = (self.current.volume - 0x10) as f32 / 64.0,
-            // V - 0x51..0x5F undefined...
-            0x5 => self.volume = (self.current.volume - 0x20) as f32 / 64.0,
-            // - - Volume slide down (0..15)
-            0x6 => { // each tick
-                self.volume_slide
-                    .xm_update_effect(self.current.volume, 2, 64.0);
-                self.volume += self.volume_slide.tick();
-            }
-            // + - Volume slide up (0..15)
-            0x7 => { // each tick
-                self.volume_slide
-                    .xm_update_effect(self.current.volume, 1, 64.0);
-                self.volume += self.volume_slide.tick();
-            }
-            // D - Fine volume slide down (0..15)
-            0x8 => {
-                self.volume_slide
-                    .xm_update_effect(self.current.volume, 2, 64.0);
-                self.volume += self.volume_slide.tick();
-            }
-            // U - Fine volume slide up (0..15)
-            0x9 => {
-                self.volume_slide
-                    .xm_update_effect(self.current.volume, 1, 64.0);
-                self.volume += self.volume_slide.tick();
-            }
-            // S - Vibrato speed (0..15)
-            0xA => self.vibrato.xm_update_effect(self.current.volume, 1, 0.0),
-            // V - Vibrato depth (0..15)
-            0xB => self.vibrato.xm_update_effect(self.current.volume, 2, 0.0),
-            // P - Set panning
-            0xC => self.panning = (self.current.volume & 0x0F) as f32 / 16.0,
-            0xD => {
-                /* L - Panning slide left */
-                self.panning_slide
-                    .xm_update_effect(self.current.volume, 2, 16.0);
-                self.panning += self.panning_slide.tick();
-                self.panning = self.panning_slide.clamp(self.panning);
-            }
-            0xE => {
-                /* R - Panning slide right */
-                self.panning_slide
-                    .xm_update_effect(self.current.volume, 1, 16.0);
-                self.panning += self.panning_slide.tick();
-                self.panning = self.panning_slide.clamp(self.panning);
-            }
-            // M - Tone portamento (0..15)
-            0xF => {
-                self.tone_portamento
-                    .xm_update_effect(self.current.volume & 0x0F, 16, self.note);
-            }
-            _ => {}
         }
     }
 
@@ -804,7 +632,7 @@ impl<'a> Channel<'a> {
 
     fn tick0_load_instrument_and_pitch(&mut self) {
         if self.historical.is_some() {
-            if self.current.effect_type == 0x14 {
+            if self.current.has_note_off() {
                 // Historical Kxy effect bug
                 return;
             }
@@ -819,27 +647,23 @@ impl<'a> Channel<'a> {
     pub(crate) fn tick0(&mut self, pattern_slot: &TrackUnit) {
         self.current = pattern_slot.clone();
 
-        if !self.current.has_delay()
-            || (self.current.has_delay() && self.current.effect_parameter & 0x0F == 0)
-        {
+        let delay = self.current.get_delay();
+        if delay != 0 {
+            self.effect_note_delay = delay;
+        } else {
             /* load instrument then note */
             self.tick0_load_instrument_and_pitch();
-            // Volume effect
-            self.tick0_volume_effects();
-            // Effects
-            self.tick0_effects();
+            self.tickn_effects(0);
 
-            if self.arpeggio.in_progress() && !self.current.has_arpeggio() {
-                self.arpeggio.retrigger();
+            if self.effect_arpeggio.in_progress() && !self.current.has_arpeggio() {
+                self.effect_arpeggio.retrigger();
             }
 
-            if self.vibrato.in_progress() && !self.current.has_vibrato() {
-                self.vibrato.retrigger();
+            if self.effect_vibrato.in_progress() && !self.current.has_vibrato() {
+                self.effect_vibrato.retrigger();
             }
 
             self.tickn_update_instr();
-        } else {
-            self.note_delay_param = self.current.effect_parameter & 0x0F;
         }
     }
 }
