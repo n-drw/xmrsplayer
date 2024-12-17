@@ -171,7 +171,7 @@ impl<'a> StateInstrDefault<'a> {
         if let Some(s) = &mut self.state_sample {
             let f = self
                 .period_helper
-                .all_to_frequency_cached(period, arp_pitch, finetune, semitone);
+                .all_to_frequency_cached(period, arp_pitch, finetune + self.state_vibrato.current_modulation, semitone);
             s.set_step(f);
         }
     }
