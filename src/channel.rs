@@ -445,7 +445,7 @@ impl<'a> Channel<'a> {
                 }
                 TrackEffect::TonePortamento(p) => {
                     if current_tick == 0 {
-                        self.effect_tone_portamento_goal = self.note;
+                        self.effect_tone_portamento_goal = self.period_helper.note_to_period(self.note);
                     } else {
                         if self.period != self.effect_tone_portamento_goal {
                             slide_towards(&mut self.period, self.effect_tone_portamento_goal, p);
