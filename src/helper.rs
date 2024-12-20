@@ -23,18 +23,8 @@ pub fn clamp_up_1f(value: &mut f32, limit: f32) {
 }
 
 #[inline(always)]
-pub fn clamp_up(value: &mut f32) {
-    *value = value.min(1.0);
-}
-
-#[inline(always)]
 pub fn clamp_down_1f(value: &mut f32, limit: f32) {
     *value = value.max(limit);
-}
-
-#[inline(always)]
-pub fn clamp_down(value: &mut f32) {
-    *value = value.max(0.0);
 }
 
 #[inline(always)]

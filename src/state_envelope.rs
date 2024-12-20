@@ -1,5 +1,4 @@
 /// An Instrument Envelope State
-use crate::helper::*;
 use xmrs::prelude::*;
 
 #[derive(Clone)]
@@ -42,8 +41,7 @@ impl<'a> StateEnvelope<'a> {
         }
 
         if num_points == 1 {
-            self.value = self.env.point[0].value;
-            clamp_up(&mut self.value);
+            self.value = self.env.point[0].value.min(1.0);
             return;
         }
 

@@ -7,8 +7,6 @@ use num_traits::float::Float;
 
 use core::ops::Deref;
 
-/// An InstrDefault State
-use crate::helper::*;
 use crate::{
     state_auto_vibrato::StateAutoVibrato, state_envelope::StateEnvelope, state_sample::StateSample,
 };
@@ -21,6 +19,7 @@ impl<'a> Deref for StateInstrDefault<'a> {
     }
 }
 
+/// An InstrDefault State
 #[derive(Clone)]
 pub struct StateInstrDefault<'a> {
     instr: &'a InstrDefault,
@@ -140,8 +139,7 @@ impl<'a> StateInstrDefault<'a> {
     fn envelopes(&mut self) {
         // Volume
         if !self.sustained {
-            self.volume_fadeout -= self.instr.volume_fadeout;
-            clamp_down(&mut self.volume_fadeout);
+            self.volume_fadeout = (self.volume_fadeout - self.instr.volume_fadeout).max(0.0);
         }
         if self.instr.volume_envelope.enabled {
             self.envelope_volume.tick(self.sustained);
