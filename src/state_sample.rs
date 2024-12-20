@@ -9,7 +9,7 @@ use micromath::F32Ext;
 #[allow(unused_imports)]
 use num_traits::float::Float;
 
-const M: u32 = 28; // 28 bits for fract part seems the better i can have
+const M: u32 = 25; // 25 bits for fract part seems the better i can have
 const M_MASK: u32 = (1 << M) - 1;
 
 #[derive(Clone)]
