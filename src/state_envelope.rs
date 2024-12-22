@@ -45,12 +45,10 @@ impl<'a> StateEnvelope<'a> {
             return;
         }
 
-        if self.env.loop_enabled {
-            let loop_start = self.env.point[self.env.loop_start_point as usize].frame;
-            let loop_end = self.env.point[self.env.loop_end_point as usize].frame;
-            if self.counter >= loop_end {
-                self.counter -= loop_end - loop_start;
-            }
+        if sustained {
+            self.counter = self.env.loop_in_sustain(self.counter);
+        } else {
+            self.counter = self.env.loop_in_loop(self.counter);
         }
 
         for i in 1..num_points {
@@ -73,9 +71,6 @@ impl<'a> StateEnvelope<'a> {
             }
         }
 
-        /* Make sure it is safe to increment frame count */
-        if !sustained || !self.env.sustain_enabled || !self.env.in_sustain_point(self.counter) {
-            self.counter += 1;
-        }
+        self.counter += 1;
     }
 }

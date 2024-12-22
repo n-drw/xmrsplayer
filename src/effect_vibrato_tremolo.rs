@@ -7,7 +7,7 @@ use num_traits::float::Float;
 
 use crate::effect::*;
 
-use xmrs::waveform::WaveformState;
+use xmrs::{prelude::Waveform, waveform::WaveformState};
 
 #[derive(Default, Clone, Copy, Debug)]
 pub struct VibratoTremolo {
@@ -29,6 +29,14 @@ pub struct EffectVibratoTremolo {
     in_progress: bool,
     pos: f32,
     value: f32,
+}
+
+impl EffectVibratoTremolo {
+    pub fn new(wf: Waveform) -> Self {
+        let mut evt = Self::default();
+        evt.data.waveform = WaveformState::new(wf);
+        evt
+    }
 }
 
 impl EffectPlugin for EffectVibratoTremolo {

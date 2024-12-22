@@ -86,11 +86,11 @@ impl<'a> Channel<'a> {
             effect_note_retrig_backup: NoteRetrigState::default(),
             effect_note_retrig_counter: 0,
             effect_panbrello: EffectVibratoTremolo::default(),
-            effect_tremolo: EffectVibratoTremolo::default(),
+            effect_tremolo: EffectVibratoTremolo::new(Waveform::Sine),
             effect_tremor: false,
             effect_tremor_on: 0,
             effect_tremor_off: 0,
-            effect_vibrato: EffectVibratoTremolo::default(),
+            effect_vibrato: EffectVibratoTremolo::new(Waveform::Sine),
             effect_portamento: 0.0,
             effect_tone_portamento_goal: 0.0,
             effect_semitone: false,
@@ -188,38 +188,39 @@ impl<'a> Channel<'a> {
     }
 
     fn tickn_update_instr(&mut self) {
-        match &mut self.instr {
-            Some(instr) => {
-                let mut panning = self.panning + self.effect_panbrello.value();
-                panning = panning.clamp(0.0, 1.0);
-                panning +=
-                    (instr.envelope_panning.value - 0.5) * (0.5 - (self.panning - 0.5).abs()) * 2.0;
+        if let Some(instr) = &mut self.instr {
+            // Panning
+            let panning: f32 = self.panning
+                + (instr.envelope_panning.value - 0.5) * (0.5 - (self.panning - 0.5).abs()) * 2.0
+                + (self.effect_panbrello.value() - 0.5) * (0.5 - (self.panning - 0.5).abs()) * 2.0;
+            let panning = panning.clamp(0.0, 1.0);
 
-                let mut volume = 0.0;
-                if !self.effect_tremor {
-                    volume = self.volume + self.effect_tremolo.value();
-                    volume = volume.clamp(0.0, 1.0);
-                    volume *= instr.get_volume();
-                    volume *= self.channel_volume;
-                }
-
-                self.actual_volume[0] = volume * panning.sqrt();
-                self.actual_volume[1] = volume * (1.0 - panning).sqrt();
-
-                let arp_pitch = if self.current.has_arpeggio() {
-                    self.effect_arpeggio.value()
-                } else {
-                    0.0
-                };
-
-                instr.update_frequency(
-                    self.period,
-                    arp_pitch,
-                    self.effect_vibrato.value(),
-                    self.effect_semitone,
-                )
+            // Volume
+            let mut volume = 0.0;
+            if !self.effect_tremor {
+                volume = self.volume + self.effect_tremolo.value();
+                volume = volume.clamp(0.0, 1.0);
+                volume *= instr.get_volume();
+                volume *= self.channel_volume;
             }
-            None => {}
+
+            // Volume and Freq in one
+            self.actual_volume[0] = volume * panning.sqrt();
+            self.actual_volume[1] = volume * (1.0 - panning).sqrt();
+
+            // Frequency
+            let arp_pitch = if self.current.has_arpeggio() {
+                self.effect_arpeggio.value()
+            } else {
+                0.0
+            };
+
+            instr.update_frequency(
+                self.period,
+                arp_pitch,
+                self.effect_vibrato.value(),
+                self.effect_semitone,
+            )
         }
     }
 
@@ -257,6 +258,7 @@ impl<'a> Channel<'a> {
                     speed: _s,
                     fine: _f,
                 } => {
+                    #[cfg(feature = "demo")]
                     println!("ChannelVolumeSlide");
                     todo!();
                 }
@@ -276,6 +278,7 @@ impl<'a> Channel<'a> {
                     }
                 }
                 TrackEffect::InstrumentNewNoteAction(_nna) => {
+                    #[cfg(feature = "demo")]
                     println!("InstrumentNewNoteAction");
                     todo!();
                 }
@@ -294,6 +297,7 @@ impl<'a> Channel<'a> {
                     }
                 }
                 TrackEffect::InstrumentPitchEnvelope(_pe) => {
+                    #[cfg(feature = "demo")]
                     println!("InstrumentPitchEnvelope");
                     todo!()
                 }
@@ -309,6 +313,7 @@ impl<'a> Channel<'a> {
                     }
                 }
                 TrackEffect::InstrumentSurround(_s) => {
+                    #[cfg(feature = "demo")]
                     println!("InstrumentSurround");
                     todo!()
                 }
@@ -364,6 +369,7 @@ impl<'a> Channel<'a> {
                     }
                 }
                 TrackEffect::NoteFadeOut { tick: _t, past: _p } => {
+                    #[cfg(feature = "demo")]
                     println!("NoteFadeOut");
                     todo!();
                 }
@@ -412,7 +418,8 @@ impl<'a> Channel<'a> {
                 }
                 TrackEffect::Panbrello { speed: s, depth: d } => {
                     if current_tick == 0 {
-                        self.effect_panbrello.tick0(s, d);
+                        self.effect_panbrello.data.speed = s;
+                        self.effect_panbrello.data.depth = d;
                     } else {
                         self.effect_panbrello.tick();
                     }
@@ -445,7 +452,8 @@ impl<'a> Channel<'a> {
                 }
                 TrackEffect::TonePortamento(p) => {
                     if current_tick == 0 {
-                        self.effect_tone_portamento_goal = self.period_helper.note_to_period(self.note);
+                        self.effect_tone_portamento_goal =
+                            self.period_helper.note_to_period(self.note);
                     } else {
                         if self.period != self.effect_tone_portamento_goal {
                             slide_towards(&mut self.period, self.effect_tone_portamento_goal, p);
@@ -454,7 +462,8 @@ impl<'a> Channel<'a> {
                 }
                 TrackEffect::Tremolo { speed: s, depth: d } => {
                     if current_tick == 0 {
-                        self.effect_tremolo.tick0(s, d);
+                        self.effect_tremolo.data.speed = s;
+                        self.effect_tremolo.data.depth = d;
                     } else {
                         self.effect_tremolo.tick();
                     }
@@ -484,7 +493,8 @@ impl<'a> Channel<'a> {
                 }
                 TrackEffect::Vibrato { speed: s, depth: d } => {
                     if current_tick == 0 {
-                        self.effect_vibrato.tick0(s, d);
+                        self.effect_vibrato.data.speed = s;
+                        self.effect_vibrato.data.depth = d;
                     } else {
                         self.effect_vibrato.tick();
                     }
@@ -592,7 +602,7 @@ impl<'a> Channel<'a> {
     }
 
     fn tick0_load_pitch(&mut self, new_instr: bool) {
-        // Note is note valid? Return early.
+        // Note is not valid? Return early.
         if !self.current.note.is_valid() {
             if self.current.note.is_keyoff() {
                 if self.current.instrument.is_none() || new_instr {
@@ -661,6 +671,9 @@ impl<'a> Channel<'a> {
         } else {
             /* load instrument then note */
             self.tick0_load_instrument_and_pitch();
+            if let Some(instr) = &mut self.instr {
+                instr.tick();
+            }
             self.tickn_effects(0);
 
             if self.effect_arpeggio.in_progress() && !self.current.has_arpeggio() {
