@@ -17,7 +17,7 @@ pub struct VibratoTremolo {
 }
 
 impl VibratoTremolo {
-    // return depth * (-1..1)
+    /// return depth * waveform value position
     fn waveform(&mut self, pos: f32) -> f32 {
         self.depth * self.waveform.value(pos)
     }
