@@ -221,10 +221,12 @@ impl<'a> XmrsPlayer<'a> {
                     self.bpm = bpm;
                 }
                 GlobalEffect::BpmSlide(_value) => {
+                    #[cfg(feature = "demo")]
                     println!("BpmSlide");
                     todo!();
                 }
                 GlobalEffect::MidiMacro(_m) => {
+                    #[cfg(feature = "demo")]
                     println!("MidiMacro");
                     todo!();
                 }
