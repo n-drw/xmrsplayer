@@ -16,6 +16,8 @@ const M_MASK: u32 = (1 << M) - 1;
 pub struct StateSample<'a> {
     sample: &'a Sample,
     finetune: f32,
+    /// current sustain state
+    pub sustained: bool,
     /// current seek position
     position: (u32, u32), // ( Position, Fract part M shifted )
     /// step is freq / rate
@@ -30,6 +32,7 @@ impl<'a> StateSample<'a> {
         Self {
             sample,
             finetune,
+            sustained: true,
             position: (0, 0),
             step: None,
             rate,
@@ -38,6 +41,7 @@ impl<'a> StateSample<'a> {
 
     pub fn reset(&mut self) {
         self.position = (0, 0);
+        self.sustained = true;
         self.step = None;
     }
 
@@ -77,10 +81,10 @@ impl<'a> StateSample<'a> {
     fn tick(&mut self) -> (f32, f32) {
         let t = self.get_position_fraction() as f32 / (1 << M) as f32;
 
-        let useek = self.sample.meta_seek(self.get_position() as usize);
+        let useek = self.get_position() as usize;
         let u = self.sample.at(useek);
 
-        let vseek = self.sample.meta_seek(self.get_position() as usize + 1);
+        let vseek = self.sample.meta_seek(useek + 1, self.sustained);
         let v = self.sample.at(vseek);
 
         self.increment_position();
@@ -107,6 +111,7 @@ impl<'a> StateSample<'a> {
 
     #[inline(always)]
     fn get_position(&mut self) -> u32 {
+        self.position.0 = self.sample.meta_seek(self.position.0 as usize, self.sustained) as u32;
         return self.position.0;
     }
 

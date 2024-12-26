@@ -124,6 +124,10 @@ impl<'a> StateInstrDefault<'a> {
         /* Key Off */
         self.sustained = false;
 
+        if let Some(ss) = &mut self.state_sample {
+            ss.sustained = false;
+        }
+
         if !self.envelope_volume.has_volume_envelope() {
             if self.instr.volume_fadeout == 0.0 {
                 self.cut_pitch();
