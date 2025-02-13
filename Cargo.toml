@@ -14,19 +14,29 @@ keywords = ["xm", "module", "mod", "s3m", "soundtracker"]
 categories = ["multimedia::audio", "embedded", "no-std"]
 
 [dependencies]
-xmrs = { version = "0.9.5", default-features = false }
+xmrs = { version = "0.9.6", default-features = false }
 clap = { version = "4.5", optional = true, features = ["cargo", "derive"] }
-rodio =  { version = "0.19", optional = true }
-console =  { version = "0.15", optional = true }
-cpal =  { version = "0.15", optional = true }
-num-traits = { version = "0.2",default-features = false, optional=true } # libm wrapper
-micromath = { version = "2.1", optional=true }
-hound = { version = "3.5", optional=true }
+rodio = { version = "0.20.1" }
+console = { version = "0.15", optional = true }
+cpal = { version = "0.15", optional = true }
+num-traits = { version = "0.2", default-features = false, optional = true } # libm wrapper
+micromath = { version = "2.1", optional = true }
+hound = { version = "3.5", optional = true }
+
+
+[patch.crates-io.xmrs]
+git = "https://github.com/n-drw/xmrs"
 
 [features]
 default = ["micromath"]
 demo = ["std", "clap", "console", "cpal", "hound", "import", "sid"]
-import = ["xmrs/import_amiga", "xmrs/import_it", "xmrs/import_s3m", "xmrs/import_sid", "xmrs/import_xm"]
+import = [
+  "xmrs/import_amiga",
+  "xmrs/import_it",
+  "xmrs/import_s3m",
+  "xmrs/import_sid",
+  "xmrs/import_xm",
+]
 libm = ["num-traits/libm", "xmrs/libm"]
 micromath = ["dep:micromath", "xmrs/micromath"]
 sid = ["xmrs/import_sid"]
@@ -45,4 +55,4 @@ panic = "abort"
 [[bin]]
 name = "xmrsplayer"
 path = "src/bin/cpal_player.rs"
-required-features = [ "demo" ]
+required-features = ["demo"]

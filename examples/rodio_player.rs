@@ -1,6 +1,5 @@
 use clap::Parser;
 use console::{Key, Term};
-use rodio::Sink;
 use std::sync::{Arc, Mutex};
 
 use xmrs::import::amiga::amiga_module::AmigaModule;
@@ -12,7 +11,7 @@ mod bufferedsource;
 use bufferedsource::BufferedSource;
 use xmrsplayer::prelude::*;
 
-const SAMPLE_RATE: u32 = 48000;
+const SAMPLE_RATE: u32 = 44100;
 
 #[derive(Parser)]
 struct Cli {
@@ -68,6 +67,8 @@ fn main() -> Result<(), std::io::Error> {
                         Ok(xm) => {
                             drop(contents); // cleanup memory
                             let module = xm.to_module();
+                            let song = xm.header;
+                            println!("Song length: {}", song);
                             drop(xm);
                             println!("Playing {} !", module.name);
 
@@ -81,7 +82,7 @@ fn main() -> Result<(), std::io::Error> {
                                 cli.debug,
                                 cli.ch,
                                 cli.speed,
-                                cli.historical,
+                                true,
                             );
                         }
                         Err(e) => {
@@ -160,7 +161,7 @@ fn rodio_play(
     historical: bool,
 ) {
     let (_stream, stream_handle) = rodio::OutputStream::try_default().unwrap();
-    let sink: Sink = rodio::Sink::try_new(&stream_handle).unwrap();
+    let sink: rodio::Sink = rodio::Sink::try_new(&stream_handle).unwrap();
 
     // try to detect FT2 to play historical bugs
     let is_ft2 = historical
@@ -168,9 +169,11 @@ fn rodio_play(
         || module.comment == "FastTracker v2.00 (1.03)"
         || module.comment == "FastTracker v2.00 (1.04)";
 
+    let song = module.name.as_bytes();
     let player = Arc::new(Mutex::new(XmrsPlayer::new(
         module,
         SAMPLE_RATE as f32,
+        song.len(),
         is_ft2,
     )));
     {
@@ -188,7 +191,7 @@ fn rodio_play(
             player_lock.set_mute_channel((ch - 1).into(), false);
         }
         player_lock.set_max_loop_count(loops);
-        player_lock.goto(position, 0, speed);
+        player_lock.goto(position, 0, speed.into());
     }
     let source = BufferedSource::new(Arc::clone(&player), SAMPLE_RATE);
     sink.append(source);
@@ -220,7 +223,7 @@ fn rodio_play(
                     }
                 }
                 Key::ArrowRight => {
-                    let len = module.pattern_order[song].len();
+                    let len = module.pattern_order[song.len()].len();
                     let i = player.lock().unwrap().get_current_table_index();
                     if i + 1 < len {
                         player.lock().unwrap().goto(i + 1, 0, 0);
