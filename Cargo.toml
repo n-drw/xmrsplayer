@@ -23,9 +23,8 @@ num-traits = { version = "0.2", default-features = false, optional = true } # li
 micromath = { version = "2.1", optional = true }
 hound = { version = "3.5", optional = true }
 
-
 [patch.crates-io.xmrs]
-git = "https://github.com/n-drw/xmrs"
+git = "https://codeberg.org/sbechet/xmrs"
 
 [features]
 default = ["micromath"]
