@@ -378,7 +378,7 @@ impl<'a> XmrsPlayer<'a> {
         }
     }
 
-    fn step(&mut self) {
+    pub fn step(&mut self) {
         if self.remaining_samples_in_tick <= 0.0 {
             if self.current_tick == 0 {
                 self.tick0();
