@@ -34,9 +34,9 @@ pub struct XmrsPlayer<'a> {
 
     pub channel: Vec<Channel<'a>>,
 
-    row_loop_count: Vec<Vec<usize>>,
-    loop_count: usize,
-    max_loop_count: usize,
+    pub row_loop_count: Vec<Vec<usize>>,
+    pub loop_count: usize,
+    pub max_loop_count: usize,
 
     /// None if next-one is a left sample, else right sample
     right_sample: Option<f32>,
@@ -44,7 +44,7 @@ pub struct XmrsPlayer<'a> {
     debug: bool,
     hhelper: Option<HistoricalHelper>,
 
-    pause: bool,
+    pub pause: bool,
 }
 
 impl<'a> XmrsPlayer<'a> {
